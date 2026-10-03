@@ -959,8 +959,9 @@ DispatchQueue.main.async {
 
     let needsRunLoop = CLI.main()
     if !needsRunLoop {
-        // Commands that don't need the run loop can exit immediately
-        NSApp.terminate(nil)
+        // exit rather than NSApp.terminate: the bundle declares NSSupportsSuddenTermination,
+        // whose teardown skips the stdio flush, so a piped command would print nothing.
+        exit(0)
     } else {
         StatusBarController.shared.setup()
         StatusBarController.shared.onReloadConfig = {
