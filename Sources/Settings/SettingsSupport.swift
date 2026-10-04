@@ -43,6 +43,8 @@ struct TokenSheetView: View {
 
                 Section {
                     SecureField("输入令牌", text: $tokenText)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("令牌")
 
                     Picker("存储位置", selection: $storageChoice) {
                         ForEach(TokenStorage.allCases, id: \.self) { storage in

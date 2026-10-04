@@ -203,8 +203,10 @@ struct SettingsView: View {
                 Text("端口")
                     .foregroundStyle(.secondary)
                 Spacer()
-                TextField("留空以禁用", text: $viewModel.localServerPort)
-                    .frame(width: 120)
+                TextField("", text: $viewModel.localServerPort)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("端口")
+                    .frame(width: 100)
                     .multilineTextAlignment(.trailing)
             }
 
@@ -371,6 +373,8 @@ private struct ServerRowView: View {
                     Text("URL")
                         .foregroundStyle(.secondary)
                     TextField("", text: $server.url)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("URL")
                 }
 
                 HStack {
@@ -500,8 +504,9 @@ private struct ServerRowView: View {
 
             if mode.wrappedValue == .custom {
                 TextField(placeholder, text: input)
-                    .textFieldStyle(.plain)
+                    .textFieldStyle(.roundedBorder)
                     .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 260)
             }
 
             Spacer(minLength: 0)
