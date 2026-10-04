@@ -172,7 +172,7 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         case .synced(let date):
-            Label("上次同步：\(date.formatted(date: .abbreviated, time: .shortened))", systemImage: "checkmark.icloud.fill")
+            Label("上次同步：\(SyncTimeFormat.string(date))", systemImage: "checkmark.icloud.fill")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         case .failed(let message):

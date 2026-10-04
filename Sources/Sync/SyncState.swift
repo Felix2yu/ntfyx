@@ -9,6 +9,21 @@ struct SyncState: Codable, Equatable {
     var lastSyncedAt: Date?
 }
 
+/// Sync timestamps are pinned to zh_CN so they read 年月日 时分 instead of turning into
+/// "Oct 4, 2026" on a Mac whose system locale is English, unlike the rest of the copy.
+enum SyncTimeFormat {
+    private static let formatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy年M月d日 HH:mm"
+        return formatter
+    }()
+
+    static func string(_ date: Date) -> String {
+        formatter.string(from: date)
+    }
+}
+
 /// `~/Library/Application Support/ntfyx/sync-state.json`, next to the history database.
 enum SyncStateStore {
     static var fileURL: URL {

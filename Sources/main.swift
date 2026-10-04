@@ -752,7 +752,7 @@ struct CLI {
             print("本机基线：尚无（这台机器还没完成过同步）")
         }
         if let date = state.lastSyncedAt {
-            print("上次同步：\(date.formatted(date: .abbreviated, time: .shortened))")
+            print("上次同步：\(SyncTimeFormat.string(date))")
         } else {
             print("上次同步：从未")
         }

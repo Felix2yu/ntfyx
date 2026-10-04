@@ -337,7 +337,7 @@ class StatusBarController: NSObject {
         case .syncing:
             item.title = "iCloud 同步：正在同步…"
         case .synced(let date):
-            item.title = "iCloud 同步：已于 \(date.formatted(date: .omitted, time: .shortened)) 同步"
+            item.title = "iCloud 同步：已于 \(SyncTimeFormat.string(date)) 同步"
         case .failed(let message):
             item.title = ""
             item.attributedTitle = NSAttributedString(
