@@ -213,6 +213,8 @@ struct HistoryView: View {
 private struct TopicBrowserView: View {
     @ObservedObject var viewModel: HistoryViewModel
     @Environment(\.dismiss) private var dismiss
+    /// Topic whose server-cache purge the user is confirming.
+    @State private var pendingRetire: HistoryViewModel.ServerTopicEntry?
     private static let windowWidth: CGFloat = 420
 
     var body: some View {
@@ -273,6 +275,26 @@ private struct TopicBrowserView: View {
             }
         }
         .frame(width: Self.windowWidth, height: 420)
+        .confirmationDialog(
+            "清空主题「\(pendingRetire?.topic ?? "")」的服务器缓存？",
+            isPresented: Binding(
+                get: { pendingRetire != nil },
+                set: { if !$0 { pendingRetire = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("从服务器删除", role: .destructive) {
+                if let entry = pendingRetire {
+                    viewModel.retireTopic(TopicRef(serverURL: entry.serverURL, topic: entry.topic))
+                }
+                pendingRetire = nil
+            }
+            Button("取消", role: .cancel) {
+                pendingRetire = nil
+            }
+        } message: {
+            Text("服务器会丢弃该主题的全部缓存消息与附件，其他设备也会随之清空；有新消息发布时主题会重新出现在列表里。")
+        }
         .task {
             if viewModel.serverTopics.isEmpty { viewModel.loadServerTopics() }
         }
@@ -332,6 +354,13 @@ private struct TopicBrowserView: View {
             Button("订阅") {
                 viewModel.subscribe(serverURL: serverURL, topic: topic)
             }
+            Button {
+                pendingRetire = entry
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .help("清空该主题在服务器上的缓存，需对该主题有写入权限")
         case .goneOnServer:
             Text("服务器已无缓存")
                 .font(.caption)
