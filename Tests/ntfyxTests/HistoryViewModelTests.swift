@@ -246,6 +246,87 @@ final class HistoryViewModelTests: XCTestCase {
         XCTAssertEqual(entries.first?.status, .goneOnServer)
     }
 
+    /// Thread-safe recorder for the browser test seams.
+    private final class BrowserCalls: @unchecked Sendable {
+        private let lock = NSLock()
+        private var fetches = 0
+        private var retired: String?
+
+        func nextFetchReturnedFirst() -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            fetches += 1
+            return fetches == 1
+        }
+        func recordRetire(_ value: String) {
+            lock.lock(); retired = value; lock.unlock()
+        }
+        var retireTarget: String? {
+            lock.lock(); defer { lock.unlock() }
+            return retired
+        }
+    }
+
+    private func tempConfigPath() -> String {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("hvm-\(UUID().uuidString).yml").path
+    }
+
+    private func loadSingleServerConfig() throws -> String {
+        let src = tempConfigPath()
+        let yaml = """
+        servers:
+          - url: https://s.example
+            topics: []
+        """
+        try yaml.write(toFile: src, atomically: true, encoding: .utf8)
+        try ConfigManager.shared.loadConfig(from: src)
+        return src
+    }
+
+    /// The purge the browser's trash button triggers: the server DELETE runs, then the
+    /// re-queried list must no longer contain the retired topic.
+    func testRetireTopicPurgesServerAndDropsRow() async throws {
+        let src = try loadSingleServerConfig()
+        defer { try? FileManager.default.removeItem(atPath: src) }
+
+        let store = try MessageStore.inMemory()
+        let vm = HistoryViewModel(store: store, syncService: HistorySyncService(store: store))
+        let calls = BrowserCalls()
+        vm.topicsFetcher = { _, _ in
+            calls.nextFetchReturnedFirst() ? ["releases", "alerts"] : ["alerts"]
+        }
+        vm.topicRetrier = { serverURL, topic, _ in
+            calls.recordRetire("\(serverURL)|\(topic)")
+            return 7
+        }
+
+        vm.loadServerTopics()
+        try await waitUntil { vm.serverTopics["https://s.example"]?.count == 2 }
+
+        vm.retireTopic(TopicRef(serverURL: "https://s.example", topic: "releases"))
+        try await waitUntil { calls.retireTarget == "https://s.example|releases" }
+        try await waitUntil {
+            (vm.serverTopics["https://s.example"] ?? []).map(\.topic) == ["alerts"]
+        }
+        XCTAssertNil(vm.serverTopicsError)
+    }
+
+    func testRetireTopicReportsServerRejection() async throws {
+        let src = try loadSingleServerConfig()
+        defer { try? FileManager.default.removeItem(atPath: src) }
+
+        let store = try MessageStore.inMemory()
+        let vm = HistoryViewModel(store: store, syncService: HistorySyncService(store: store))
+        vm.topicsFetcher = { _, _ in ["releases"] }
+        vm.topicRetrier = { _, _, _ in throw TopicActionError.httpStatus(403) }
+
+        vm.loadServerTopics()
+        try await waitUntil { vm.serverTopics["https://s.example"]?.count == 1 }
+
+        vm.retireTopic(TopicRef(serverURL: "https://s.example", topic: "releases"))
+        try await waitUntil { vm.serverTopicsError?.contains("403") == true }
+    }
+
     // MARK: - Global search (audit 3.4)
 
     private func makeSearchableMessage(id: String, topic: String, message text: String, time: Int) -> NtfyMessage {
