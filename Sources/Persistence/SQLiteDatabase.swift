@@ -64,6 +64,20 @@ final class SQLiteDatabase: @unchecked Sendable {
         }
     }
 
+    /// Runs `body` inside a transaction, committing on success and rolling back on failure.
+    /// Callers serialize access (the store is an actor), so nesting cannot happen.
+    func transaction<T>(_ body: () throws -> T) throws -> T {
+        try execute("BEGIN IMMEDIATE")
+        do {
+            let value = try body()
+            try execute("COMMIT")
+            return value
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
+    }
+
     func prepare(_ sql: String) throws -> SQLiteStatement {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {

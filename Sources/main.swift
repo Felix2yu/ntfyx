@@ -61,6 +61,13 @@ final class Ntfyx: NtfyClientDelegate, @unchecked Sendable {
     private var badgeSync: UnreadBadgeSync?
     private var historySync: HistorySyncService?
 
+    /// Replayed (`since`) messages waiting for the replay to settle before their banners
+    /// are decided, so a whole cached backlog costs one summary instead of thousands.
+    private var pendingCatchUp: [(serverURL: String, message: NtfyMessage)] = []
+    private var catchUpBannerTimer: Timer?
+    static let catchUpBannerSettleTime: TimeInterval = 1.5
+    static let catchUpIndividualBannerLimit = 3
+
     /// Set by serve() when this launch wrote the config file it then loaded: nothing is
     /// subscribed yet, so the UI should go straight to Settings.
     private(set) var didCreateInitialConfig = false
@@ -424,27 +431,118 @@ final class Ntfyx: NtfyClientDelegate, @unchecked Sendable {
         }
 
         // Handle auto-run scripts
-        if let autoRunScript = topicConfig?.autoRunScript {
-            if scriptRunner.validateScript(at: autoRunScript) {
-                Log.info("Auto-running script: \(autoRunScript)")
-                // Pass message context as environment variables
-                var env: [String: String] = [
-                    "NTFY_ID": message.id,
-                    "NTFY_TOPIC": message.topic,
-                    "NTFY_TIME": String(message.time),
-                    "NTFY_EVENT": message.event,
-                ]
-                if let title = message.title { env["NTFY_TITLE"] = title }
-                if let msg = message.message { env["NTFY_MESSAGE"] = msg }
-                if let priority = message.priority { env["NTFY_PRIORITY"] = String(priority) }
-                if let tags = message.tags { env["NTFY_TAGS"] = tags.joined(separator: ",") }
-                if let click = message.click { env["NTFY_CLICK"] = click }
-                scriptRunner.runScript(at: autoRunScript, withArgument: message.message, extraEnv: env)
-            }
+        if let autoRunScript = topicConfig?.autoRunScript, scriptRunner.validateScript(at: autoRunScript) {
+            runAutoRunScript(for: message, scriptPath: autoRunScript)
         }
 
         // Show notification (respects silent flag)
         ensureNotificationManager().showNotification(for: message, topicConfig: topicConfig, serverURL: serverURL)
+    }
+
+    /// Replayed history from a `since` catch-up: stored in one transaction per batch and
+    /// reported once, so a server replaying tens of thousands of cached messages cannot
+    /// occupy the main thread message by message (that is what spun the beachball).
+    func ntfyClient(_ client: NtfyClient, didReceiveCatchUpBatch batch: [NtfyMessage]) {
+        guard let serverURL = clientToServer[ObjectIdentifier(client)]?.serverURL else { return }
+        guard let store = messageStore else {
+            // No history database to batch into, so fall back to the per-message path
+            // rather than dropping the replay.
+            for message in batch where !message.isActionEvent {
+                ntfyClient(client, didReceiveMessage: message)
+            }
+            return
+        }
+        Log.info("📩 Catch-up on \(serverURL): \(batch.count) replayed message(s)")
+
+        pendingCatchUp.append(contentsOf: batch.map { (serverURL: serverURL, message: $0) })
+        scheduleCatchUpBanner()
+
+        let topics = Set(batch.map { TopicRef(serverURL: serverURL, topic: $0.topic) })
+        // Resolved here because `ConfigManager.config` is main-thread state; the scripts
+        // themselves are validated and spawned off-main — thousands of path checks would
+        // otherwise stall the UI again.
+        let runner = scriptRunner
+        let scripts = batch.compactMap { message -> (String, NtfyMessage)? in
+            guard let path = ConfigManager.shared.topicConfig(serverURL: serverURL, topic: message.topic)?.autoRunScript else { return nil }
+            return (path, message)
+        }
+
+        Task.detached(priority: .utility) { [weak self] in
+            let revoked = (try? await store.applyBatch(batch, serverURL: serverURL)) ?? []
+            for (path, message) in scripts where runner.validateScript(at: path) {
+                self?.runAutoRunScript(for: message, scriptPath: path)
+            }
+            await MainActor.run {
+                if !revoked.isEmpty {
+                    self?.ensureNotificationManager().revoke(messageIDs: revoked)
+                }
+                for ref in topics {
+                    NotificationCenter.default.post(
+                        name: .historyStoreDidChange,
+                        object: nil,
+                        userInfo: ["topicRef": ref]
+                    )
+                }
+            }
+        }
+    }
+
+    /// Spawns the topic's `auto_run_script` for one message; the caller has to have checked
+    /// that the script is there (the batch path checks once per batch, off-main).
+    private func runAutoRunScript(for message: NtfyMessage, scriptPath path: String) {
+        Log.info("Auto-running script: \(path)")
+        // Pass message context as environment variables
+        var env: [String: String] = [
+            "NTFY_ID": message.id,
+            "NTFY_TOPIC": message.topic,
+            "NTFY_TIME": String(message.time),
+            "NTFY_EVENT": message.event,
+        ]
+        if let title = message.title { env["NTFY_TITLE"] = title }
+        if let msg = message.message { env["NTFY_MESSAGE"] = msg }
+        if let priority = message.priority { env["NTFY_PRIORITY"] = String(priority) }
+        if let tags = message.tags { env["NTFY_TAGS"] = tags.joined(separator: ",") }
+        if let click = message.click { env["NTFY_CLICK"] = click }
+        scriptRunner.runScript(at: path, withArgument: message.message, extraEnv: env)
+    }
+
+    /// Restarts the settle timer: banners are held until the replay stops arriving, then
+    /// folded into a single summary.
+    private func scheduleCatchUpBanner() {
+        catchUpBannerTimer?.invalidate()
+        catchUpBannerTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.catchUpBannerSettleTime, repeats: false
+        ) { [weak self] _ in
+            self?.flushCatchUpBanners()
+        }
+    }
+
+    /// A handful of messages missed while the app was away still gets its own banners;
+    /// a whole replayed cache gets one line, because hundreds of sound-bearing banners
+    /// freeze notificationcenterd (see NotificationThrottle).
+    private func flushCatchUpBanners() {
+        catchUpBannerTimer = nil
+        let pending = pendingCatchUp
+        pendingCatchUp.removeAll()
+        guard !pending.isEmpty else { return }
+
+        let manager = ensureNotificationManager()
+        if pending.count <= Self.catchUpIndividualBannerLimit {
+            for entry in pending {
+                manager.showNotification(
+                    for: entry.message,
+                    topicConfig: ConfigManager.shared.topicConfig(
+                        serverURL: entry.serverURL, topic: entry.message.topic
+                    ),
+                    serverURL: entry.serverURL
+                )
+            }
+            return
+        }
+        manager.showCatchUpSummary(
+            count: pending.count,
+            topics: Set(pending.map { $0.message.topic }).sorted()
+        )
     }
 
     /// Handles server-side "message_delete" (gone) / "message_clear" (marked read)

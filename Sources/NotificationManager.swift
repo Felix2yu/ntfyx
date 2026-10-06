@@ -233,6 +233,37 @@ final class NotificationManager: NSObject, @unchecked Sendable {
         }
     }
 
+    /// One replaceable banner for a whole replayed catch-up. The messages are old by
+    /// definition — the server sent them from its cache — so they are one event worth
+    /// reporting, not hundreds of sound-bearing banners.
+    static let catchUpSummaryIdentifier = "ntfy:catch-up-summary"
+
+    func showCatchUpSummary(count: Int, topics: [String]) {
+        guard count > 0, Self.canManageBanners else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "补齐 \(count) 条消息"
+        let shownTopics = topics.prefix(3).joined(separator: "、")
+        if topics.count > 3 {
+            content.body = "已收录历史：\(shownTopics) 等 \(topics.count) 个主题"
+        } else {
+            content.body = "已收录历史：\(shownTopics)"
+        }
+        content.interruptionLevel = .active
+        content.sound = UNNotificationSound(named: UNNotificationSoundName("Glass.aiff"))
+
+        let request = UNNotificationRequest(
+            identifier: Self.catchUpSummaryIdentifier,
+            content: content,
+            trigger: nil
+        )
+        center.add(request) { error in
+            if let error = error {
+                Log.error("Failed to show catch-up summary notification: \(error)")
+            }
+        }
+    }
+
     private func showTopicNotification(for message: NtfyMessage, topicConfig: TopicConfig, serverURL: String?, passive: Bool = false) {
         let content = UNMutableNotificationContent()
         let emojiPrefix = EmojiTags.emojiPrefix(for: message.tags)

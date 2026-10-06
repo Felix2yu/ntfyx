@@ -32,6 +32,9 @@ enum Log {
         setupLogFile()
     }()
 
+    /// Serializes writes: `FileHandle` is not thread-safe, and neither is `DateFormatter`.
+    private static let writeLock = NSLock()
+
     private static func setupLogFile() -> FileHandle? {
         let fileManager = FileManager.default
 
@@ -81,32 +84,38 @@ enum Log {
     }
 
     private static func log(_ message: String) {
+        // Everything below touches shared, non-thread-safe state (the file handle and
+        // DateFormatter), and logging happens from the main thread, the URLSession delegate
+        // queue and several actors at once.
+        writeLock.lock()
+        defer { writeLock.unlock() }
+
+        let line = "[\(dateFormatter.string(from: Date()))] \(message)"
+
         // Only write to stdout in interactive mode (manual run)
         // In service mode, skip stdout to avoid duplicate logs in launchd files
         if isInteractiveMode {
-            print(message)
+            print(line)
             fflush(stdout)
         }
 
-        // Always write to file (with rotation)
-        if let data = (message + "\n").data(using: .utf8) {
+        // Always write to file (rotated at startup). No fsync per line: a log does not need
+        // that durability, and syncing on every line cost the main thread one disk round-trip
+        // per notification, which froze the UI during a history replay.
+        if let data = (line + "\n").data(using: .utf8) {
             fileHandle?.write(data)
-            try? fileHandle?.synchronize()
         }
     }
 
     static func info(_ message: String) {
-        let timestamp = dateFormatter.string(from: Date())
-        log("[\(timestamp)] \(message)")
+        log(message)
     }
 
     static func error(_ message: String) {
-        let timestamp = dateFormatter.string(from: Date())
-        log("[\(timestamp)] \(message)")
+        log(message)
     }
 
     static func success(_ message: String) {
-        let timestamp = dateFormatter.string(from: Date())
-        log("[\(timestamp)] \(message)")
+        log(message)
     }
 }

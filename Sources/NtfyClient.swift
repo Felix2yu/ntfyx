@@ -7,6 +7,12 @@ import Network
     /// "message_clear" (target was marked read). The event's sequenceId (or id)
     /// identifies the target message; the event's own id is freshly generated.
     func ntfyClient(_ client: NtfyClient, didReceiveActionEvent event: NtfyMessage)
+    /// Replayed history (`since=all` / `since=<watermark>`) arrives in batches rather than
+    /// one delegate call per message: a busy server can replay tens of thousands of cached
+    /// messages in a few seconds, and per-message main-thread work freezes the UI.
+    /// The batch keeps the order the server sent it in, so a delete/clear event still lands
+    /// after the message it targets.
+    func ntfyClient(_ client: NtfyClient, didReceiveCatchUpBatch batch: [NtfyMessage])
     func ntfyClient(_ client: NtfyClient, didEncounterError error: Error)
     func ntfyClientDidConnect(_ client: NtfyClient)
     func ntfyClientDidDisconnect(_ client: NtfyClient)
@@ -123,6 +129,13 @@ final class NtfyClient: NSObject, @unchecked Sendable {
     private var lastMessageTime: Int  // Track last message timestamp for fetch_missed
     private let lastMessageTimeKey: String  // UserDefaults key for persistence
 
+    /// Wall-clock seconds at the last connect. Everything the server replays from its cache
+    /// is older than this, so it is catch-up and goes through the batched path; a newer
+    /// message is live traffic and keeps the immediate per-message path.
+    private var catchUpCutoff = 0
+    /// Catch-up messages waiting to be handed over, filled and drained on `delegateQueue`.
+    private var catchUpBatch: [NtfyMessage] = []
+
     // Watchdog: reconnect if no data received for this long (ntfy sends keepalives every ~55s)
     private let watchdogInterval: TimeInterval
     private var watchdogTimer: Timer?
@@ -140,9 +153,11 @@ final class NtfyClient: NSObject, @unchecked Sendable {
         self.watchdogInterval = watchdogInterval
         self.baseReconnectDelay = baseReconnectDelay
 
-        // Restore last message time from UserDefaults for fetch_missed
-        let topicsKey = topics.sorted().joined(separator: ",")
-        self.lastMessageTimeKey = "lastMessageTime-\(serverURL)-\(topicsKey)"
+        // Restore last message time from UserDefaults for fetch_missed.
+        // The key deliberately ignores the topic list: adding a subscription must not
+        // discard the watermark of the topics that were already caught up, which used to
+        // drop the connection back to `since=all` and replay every topic's whole cache.
+        self.lastMessageTimeKey = Self.watermarkKey(serverURL: serverURL, fetchMissed: fetchMissed)
         self.lastMessageTime = UserDefaults.standard.integer(forKey: lastMessageTimeKey)
 
         // Create a dedicated serial queue for URLSession callbacks
@@ -161,6 +176,16 @@ final class NtfyClient: NSObject, @unchecked Sendable {
 
     deinit {
         disconnect()
+    }
+
+    /// Upper bound of one catch-up handover, so a single huge network chunk cannot make
+    /// the delegate do thousands of inserts in one main-thread turn.
+    static let maxCatchUpBatchSize = 500
+
+    /// UserDefaults key of the fetch-missed watermark. Scoped to the server and the
+    /// fetch-missed group, never to the topic list.
+    static func watermarkKey(serverURL: String, fetchMissed: Bool) -> String {
+        "lastMessageTime-\(serverURL)-\(fetchMissed ? 1 : 0)"
     }
 
     // Thread-safe delegate call helper
@@ -210,6 +235,8 @@ final class NtfyClient: NSObject, @unchecked Sendable {
         startPathMonitor()
 
         buffer.removeAll()
+        catchUpBatch.removeAll()
+        catchUpCutoff = Int(Date().timeIntervalSince1970)
         rejectedResponse = false
         dataTask = session.dataTask(with: request)
         dataTask?.resume()
@@ -381,10 +408,20 @@ final class NtfyClient: NSObject, @unchecked Sendable {
             // Track latest message time for fetch_missed reconnects
             if message.time > lastMessageTime {
                 lastMessageTime = message.time
-                if fetchMissed {
-                    UserDefaults.standard.set(lastMessageTime, forKey: lastMessageTimeKey)
-                }
             }
+
+            let isCatchUp = fetchMissed && message.time <= catchUpCutoff
+                && (message.event == "message" || message.isActionEvent)
+            if isCatchUp {
+                // A `since` replay is a burst, not a stream: hold it until the chunk ends
+                // and hand it over in one go instead of queueing main-thread work per message.
+                catchUpBatch.append(message)
+                if catchUpBatch.count >= Self.maxCatchUpBatchSize { flushCatchUpBatch() }
+                return
+            }
+
+            flushCatchUpBatch()  // keep the history in arrival order
+            persistWatermark()
 
             if message.event == "message" {
                 callDelegate { delegate in
@@ -398,6 +435,25 @@ final class NtfyClient: NSObject, @unchecked Sendable {
         } catch {
             Log.error("Failed to decode message: \(error)")
         }
+    }
+
+    /// Hands the buffered replay over to the delegate and stores the fetch-missed watermark.
+    /// Runs on the URLSession delegate queue, so the batch never needs a lock.
+    private func flushCatchUpBatch() {
+        guard !catchUpBatch.isEmpty else { return }
+        let batch = catchUpBatch
+        catchUpBatch.removeAll(keepingCapacity: true)
+        persistWatermark()
+        callDelegate { delegate in
+            delegate.ntfyClient(self, didReceiveCatchUpBatch: batch)
+        }
+    }
+
+    /// One UserDefaults write per batch rather than per message: the replay can carry tens
+    /// of thousands of messages and every write round-trips to cfprefsd.
+    private func persistWatermark() {
+        guard fetchMissed, lastMessageTime > 0 else { return }
+        UserDefaults.standard.set(lastMessageTime, forKey: lastMessageTimeKey)
     }
 }
 
@@ -414,9 +470,14 @@ extension NtfyClient: URLSessionDataDelegate {
                 processLine(line)
             }
         }
+
+        // Each chunk is a handover point: the replay is delivered in chunk-sized batches,
+        // which keeps the main thread free without holding messages back across chunks.
+        flushCatchUpBatch()
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        flushCatchUpBatch()
         isConnecting = false
         stopWatchdog()
 

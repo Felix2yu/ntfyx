@@ -177,6 +177,28 @@ actor MessageStore {
         return ids.first(where: { !$0.isEmpty })
     }
 
+    /// Applies a replayed catch-up batch inside one transaction. A `since` replay can carry
+    /// tens of thousands of events, and a commit per row would keep the store's serial queue
+    /// busy — and the UI waiting on it — for minutes.
+    /// - Returns: ids of the messages an action event in this batch withdrew, so their
+    ///   banners can be revoked in one call.
+    func applyBatch(_ events: [NtfyMessage], serverURL: String) throws -> [String] {
+        try db.transaction {
+            var revoked: [String] = []
+            for event in events {
+                if event.isActionEvent {
+                    try applyActionEvent(event, serverURL: serverURL)
+                    if let id = try targetMessageID(for: event, serverURL: serverURL) {
+                        revoked.append(id)
+                    }
+                } else if event.event == "message" {
+                    try upsert(event, serverURL: serverURL)
+                }
+            }
+            return revoked
+        }
+    }
+
     /// Applies a server-side `message_delete` event by tombstoning the target message.
     /// - Returns: true if a row was affected.
     @discardableResult
