@@ -116,6 +116,10 @@ final class NtfyClient: NSObject, @unchecked Sendable {
     private var isConnecting = false
     private var shouldReconnect = true
     private var retryAfterDelay: TimeInterval?  // From Retry-After header
+    /// Set when a non-200 response is rejected. The `.cancel` that follows makes URLSession
+    /// report a cancelled error, which the reconnect logic reads as a deliberate disconnect;
+    /// this flag lets the completion see it was already handled for this response.
+    private var rejectedResponse = false
     private var lastMessageTime: Int  // Track last message timestamp for fetch_missed
     private let lastMessageTimeKey: String  // UserDefaults key for persistence
 
@@ -206,6 +210,7 @@ final class NtfyClient: NSObject, @unchecked Sendable {
         startPathMonitor()
 
         buffer.removeAll()
+        rejectedResponse = false
         dataTask = session.dataTask(with: request)
         dataTask?.resume()
 
@@ -415,6 +420,14 @@ extension NtfyClient: URLSessionDataDelegate {
         isConnecting = false
         stopWatchdog()
 
+        // A response the server refused (502/500/429/…) ends in our own .cancel, whose error
+        // is indistinguishable from a deliberate disconnect. Swallow it here: the retry was
+        // already scheduled when the response came in.
+        if rejectedResponse {
+            rejectedResponse = false
+            return
+        }
+
         if let error = error {
             let nsError = error as NSError
             // Cancelled errors are expected when we cancel the task ourselves (reconnect/disconnect) — ignore them
@@ -465,7 +478,15 @@ extension NtfyClient: URLSessionDataDelegate {
                 }
             }
 
+            rejectedResponse = true
             completionHandler(.cancel)
+
+            // A refused subscription only recovers by reconnecting, and the cancelled error
+            // this .cancel produces is the one the error path ignores, so retry from here.
+            callDelegate { delegate in
+                delegate.ntfyClientDidDisconnect(self)
+            }
+            reconnect()
         }
     }
 }
