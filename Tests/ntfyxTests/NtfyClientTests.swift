@@ -43,6 +43,49 @@ final class HoldingURLProtocol: URLProtocol {
 
 // MARK: - Mock delegate
 
+/// Returns a fixed failure status (e.g. a proxy's 502) with a body, then ends the transfer,
+/// so a rejected subscription can be observed end to end. URLSession only forwards the
+/// response-decision callback once the protocol has actually produced content.
+final class RejectingURLProtocol: URLProtocol {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var _requestCount = 0
+    static var requestCount: Int {
+        get { lock.lock(); defer { lock.unlock() }; return _requestCount }
+        set { lock.lock(); _requestCount = newValue; lock.unlock() }
+    }
+    nonisolated(unsafe) static var statusCode = 502
+    nonisolated(unsafe) static var onRequest: (@Sendable (Int) -> Void)?
+
+    static func reset(statusCode: Int) {
+        requestCount = 0
+        self.statusCode = statusCode
+        onRequest = nil
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        RejectingURLProtocol.lock.lock()
+        RejectingURLProtocol._requestCount += 1
+        let count = RejectingURLProtocol._requestCount
+        let status = RejectingURLProtocol.statusCode
+        let callback = RejectingURLProtocol.onRequest
+        RejectingURLProtocol.lock.unlock()
+
+        callback?(count)
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        // URLSession only forwards the response decision once the body starts flowing.
+        client?.urlProtocol(self, didLoad: Data("gateway unavailable\n".utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
 final class MockNtfyDelegate: NtfyClientDelegate {
     var onConnect: (() -> Void)?
     var onDisconnect: (() -> Void)?
@@ -62,6 +105,12 @@ final class MockNtfyDelegate: NtfyClientDelegate {
 private func makeSessionConfig() -> URLSessionConfiguration {
     let config = URLSessionConfiguration.ephemeral
     config.protocolClasses = [HoldingURLProtocol.self]
+    return config
+}
+
+private func makeRejectingSessionConfig() -> URLSessionConfiguration {
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [RejectingURLProtocol.self]
     return config
 }
 
@@ -243,5 +292,39 @@ final class NtfyClientTests: XCTestCase {
         waitForExpectations(timeout: 0.3)
 
         XCTAssertEqual(HoldingURLProtocol.requestCount, 1)
+    }
+
+    /// A server that refuses the subscription (a proxy's 502, a 429 rate limit) used to kill
+    /// the connection for good: rejecting the response cancels the task, and that cancellation
+    /// is indistinguishable from a deliberate disconnect, so nothing ever retried. Live
+    /// messages then stopped arriving and the unread badges only appeared once the user clicked
+    /// a topic and the poll pulled the backlog in.
+    ///
+    /// Not @MainActor: the client reports and reschedules on the main queue, which only drains
+    /// while this test blocks off-thread waiting for the expectations.
+    func testRejectedResponseReconnects() {
+        RejectingURLProtocol.reset(statusCode: 502)
+
+        let retryExp = expectation(description: "Second request after the rejected response")
+        RejectingURLProtocol.onRequest = { count in
+            if count >= 2 { retryExp.fulfill() }
+        }
+
+        let disconnectExp = expectation(description: "Refused server reported as disconnected")
+        let delegate = MockNtfyDelegate()
+        delegate.onDisconnect = { disconnectExp.fulfill() }
+
+        let client = NtfyClient(
+            serverURL: "https://ntfy.sh", topics: ["test"],
+            watchdogInterval: 60.0, baseReconnectDelay: 0.0,
+            urlSessionConfiguration: makeRejectingSessionConfig()
+        )
+        client.delegate = delegate
+        client.connect()
+
+        wait(for: [retryExp, disconnectExp], timeout: 5.0)
+        client.disconnect()
+
+        XCTAssertGreaterThanOrEqual(RejectingURLProtocol.requestCount, 2)
     }
 }
