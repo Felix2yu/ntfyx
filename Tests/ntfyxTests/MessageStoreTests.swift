@@ -313,6 +313,39 @@ final class MessageStoreTests: XCTestCase {
         XCTAssertTrue(messages[0].isRead)
     }
 
+    /// A `since` replay arrives as one batch: rows land, the events inside it still apply to
+    /// the messages that preceded them, and the withdrawn banners come back in one list.
+    func testApplyBatchStoresMessagesAndAppliesEvents() async throws {
+        let revoked = try await store.applyBatch([
+            makeMessage(id: "m1", sequenceId: "seq-1"),
+            makeMessage(id: "m2", time: 1_700_000_001, sequenceId: "seq-2"),
+            makeMessage(id: "evt", sequenceId: "seq-2", event: NtfyMessage.deleteEvent),
+            makeMessage(id: "m3", time: 1_700_000_002),
+        ], serverURL: "https://s.example")
+
+        XCTAssertEqual(revoked, ["m2"])
+        let messages = try await store.messages(serverURL: "https://s.example", topic: "alerts")
+        XCTAssertEqual(Set(messages.map { $0.message.id }), ["m1", "m3"])
+    }
+
+    /// Replaying the same batch (a reconnect before the watermark was stored) must not
+    /// duplicate rows or resurrect a tombstoned message.
+    func testApplyBatchIsIdempotent() async throws {
+        let batch = [
+            makeMessage(id: "m1", sequenceId: "seq-1"),
+            makeMessage(id: "evt", sequenceId: "seq-1", event: NtfyMessage.deleteEvent),
+        ]
+        _ = try await store.applyBatch(batch, serverURL: "https://s.example")
+        _ = try await store.applyBatch(batch, serverURL: "https://s.example")
+
+        let messages = try await store.messages(serverURL: "https://s.example", topic: "alerts")
+        XCTAssertTrue(messages.isEmpty)
+        let rowStillThere = try await store.rawRowExists(
+            serverURL: "https://s.example", topic: "alerts", messageID: "m1"
+        )
+        XCTAssertTrue(rowStillThere)  // one tombstone, not a resurrected or duplicated row
+    }
+
     func testClearEventIgnoresUnknownAndDeletedTargets() async throws {
         try await store.upsert(makeMessage(id: "m1", sequenceId: "seq-1"), serverURL: "https://s.example")
         try await store.upsert(makeMessage(id: "m2", time: 1_700_000_001, sequenceId: "seq-2"), serverURL: "https://s.example")

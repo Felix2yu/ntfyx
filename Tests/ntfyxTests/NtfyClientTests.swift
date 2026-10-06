@@ -86,18 +86,73 @@ final class RejectingURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+/// Streams a canned NDJSON body and closes, which is what a `since` replay looks like from
+/// the server: a burst of cached messages arriving back to back.
+final class ReplayURLProtocol: URLProtocol {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var _lines: [String] = []
+    nonisolated(unsafe) private static var _urls: [String] = []
+
+    static func reset(lines: [String]) {
+        lock.lock()
+        _lines = lines
+        _urls = []
+        onRequest = nil
+        lock.unlock()
+    }
+
+    static var requestedURLs: [String] {
+        lock.lock(); defer { lock.unlock() }; return _urls
+    }
+
+    nonisolated(unsafe) static var onRequest: (@Sendable (Int) -> Void)?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        ReplayURLProtocol.lock.lock()
+        ReplayURLProtocol._urls.append(request.url?.absoluteString ?? "")
+        let lines = ReplayURLProtocol._lines
+        let count = ReplayURLProtocol._urls.count
+        let callback = ReplayURLProtocol.onRequest
+        ReplayURLProtocol.lock.unlock()
+
+        callback?(count)
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        if !lines.isEmpty {
+            client?.urlProtocol(self, didLoad: Data((lines.joined(separator: "\n") + "\n").utf8))
+        }
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+/// One ntfy JSON line, as the server writes it to the stream.
+private func ndjson(
+    id: String, time: Int, topic: String = "t", event: String = "message"
+) -> String {
+    "{\"id\":\"\(id)\",\"time\":\(time),\"event\":\"\(event)\",\"topic\":\"\(topic)\",\"message\":\"m-\(id)\"}"
+}
+
 final class MockNtfyDelegate: NtfyClientDelegate {
     var onConnect: (() -> Void)?
     var onDisconnect: (() -> Void)?
     var onError: ((Error) -> Void)?
     var onMessage: ((NtfyMessage) -> Void)?
     var onActionEvent: ((NtfyMessage) -> Void)?
+    var onCatchUpBatch: (([NtfyMessage]) -> Void)?
 
     func ntfyClientDidConnect(_ client: NtfyClient) { onConnect?() }
     func ntfyClientDidDisconnect(_ client: NtfyClient) { onDisconnect?() }
     func ntfyClient(_ client: NtfyClient, didEncounterError error: Error) { onError?(error) }
     func ntfyClient(_ client: NtfyClient, didReceiveMessage message: NtfyMessage) { onMessage?(message) }
     func ntfyClient(_ client: NtfyClient, didReceiveActionEvent event: NtfyMessage) { onActionEvent?(event) }
+    func ntfyClient(_ client: NtfyClient, didReceiveCatchUpBatch batch: [NtfyMessage]) { onCatchUpBatch?(batch) }
 }
 
 // MARK: - Helper
@@ -111,6 +166,12 @@ private func makeSessionConfig() -> URLSessionConfiguration {
 private func makeRejectingSessionConfig() -> URLSessionConfiguration {
     let config = URLSessionConfiguration.ephemeral
     config.protocolClasses = [RejectingURLProtocol.self]
+    return config
+}
+
+private func makeReplaySessionConfig() -> URLSessionConfiguration {
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [ReplayURLProtocol.self]
     return config
 }
 
@@ -326,5 +387,137 @@ final class NtfyClientTests: XCTestCase {
         client.disconnect()
 
         XCTAssertGreaterThanOrEqual(RejectingURLProtocol.requestCount, 2)
+    }
+
+    // MARK: - Catch-up replay
+
+    private func clearWatermark(_ serverURL: String) {
+        UserDefaults.standard.removeObject(
+            forKey: NtfyClient.watermarkKey(serverURL: serverURL, fetchMissed: true)
+        )
+    }
+
+    private func storedWatermark(_ serverURL: String) -> Int {
+        UserDefaults.standard.integer(
+            forKey: NtfyClient.watermarkKey(serverURL: serverURL, fetchMissed: true)
+        )
+    }
+
+    /// A server that replays its whole cache used to hand every message over on its own,
+    /// which meant tens of thousands of main-thread round-trips (log, banner, database task)
+    /// and a frozen UI. The replay now comes in batches.
+    func testCatchUpReplayArrivesInBatches() {
+        let serverURL = "https://replay-batch.test"
+        clearWatermark(serverURL)
+        let now = Int(Date().timeIntervalSince1970)
+        let newest = now - 1
+        let total = 2000
+        ReplayURLProtocol.reset(lines: (0..<total).map { ndjson(id: "m\($0)", time: now - total + $0) })
+
+        let batchExp = expectation(description: "replay delivered in batches")
+        let closeExp = expectation(description: "replay finished")
+        var batchSizes: [Int] = []
+        var deliveredIndividual = 0
+        let delegate = MockNtfyDelegate()
+        delegate.onCatchUpBatch = { batch in
+            batchSizes.append(batch.count)
+            if batchSizes.reduce(0, +) == total { batchExp.fulfill() }
+        }
+        delegate.onMessage = { _ in deliveredIndividual += 1 }
+        delegate.onDisconnect = { closeExp.fulfill() }
+
+        let client = NtfyClient(
+            serverURL: serverURL, topics: ["t"], fetchMissed: true,
+            watchdogInterval: 60, baseReconnectDelay: 60,
+            urlSessionConfiguration: makeReplaySessionConfig()
+        )
+        client.delegate = delegate
+        client.connect()
+
+        wait(for: [batchExp, closeExp], timeout: 10.0)
+        client.disconnect()
+
+        XCTAssertEqual(batchSizes.reduce(0, +), total)
+        // Two thousand messages used to mean two thousand main-thread handovers; now it is
+        // one per chunk, and one chunk of that size splits at the batch cap.
+        XCTAssertLessThanOrEqual(batchSizes.count, 8, "expected few batches, got \(batchSizes)")
+        XCTAssertLessThanOrEqual(batchSizes.max() ?? 0, NtfyClient.maxCatchUpBatchSize)
+        XCTAssertEqual(deliveredIndividual, 0)
+        XCTAssertTrue(ReplayURLProtocol.requestedURLs.first?.contains("since=all") == true)
+        XCTAssertEqual(storedWatermark(serverURL), newest)
+    }
+
+    /// Only what the server replays is batched: a message published after we connected still
+    /// reaches the delegate immediately, so live notifications keep their latency.
+    func testLiveMessageBypassesCatchUpBatching() {
+        let serverURL = "https://replay-live.test"
+        clearWatermark(serverURL)
+        let now = Int(Date().timeIntervalSince1970)
+        ReplayURLProtocol.reset(lines: [
+            ndjson(id: "old1", time: now - 3),
+            ndjson(id: "old2", time: now - 2),
+            ndjson(id: "live", time: now + 3600),
+        ])
+
+        let liveExp = expectation(description: "live message delivered per message")
+        var batched: [String] = []
+        var live: [String] = []
+        let delegate = MockNtfyDelegate()
+        delegate.onCatchUpBatch = { batch in batched.append(contentsOf: batch.map(\.id)) }
+        delegate.onMessage = { message in
+            live.append(message.id)
+            liveExp.fulfill()
+        }
+
+        let client = NtfyClient(
+            serverURL: serverURL, topics: ["t"], fetchMissed: true,
+            watchdogInterval: 60, baseReconnectDelay: 60,
+            urlSessionConfiguration: makeReplaySessionConfig()
+        )
+        client.delegate = delegate
+        client.connect()
+
+        wait(for: [liveExp], timeout: 5.0)
+        client.disconnect()
+
+        XCTAssertEqual(live, ["live"])
+        XCTAssertEqual(batched, ["old1", "old2"])
+    }
+
+    /// Adding a subscription must not throw away the progress of the topics that were already
+    /// caught up — that reset is what turned "add one topic" into "refetch everything".
+    func testSubscriptionChangeKeepsFetchMissedWatermark() {
+        let serverURL = "https://replay-watermark.test"
+        let watermark = 1_700_000_000
+        UserDefaults.standard.set(
+            watermark, forKey: NtfyClient.watermarkKey(serverURL: serverURL, fetchMissed: true)
+        )
+        ReplayURLProtocol.reset(lines: [])
+
+        func connectOnce(_ topics: [String], expectingRequest count: Int) {
+            let requested = expectation(description: "request #\(count)")
+            ReplayURLProtocol.onRequest = { seen in
+                if seen >= count { requested.fulfill() }
+            }
+            let client = NtfyClient(
+                serverURL: serverURL, topics: topics, fetchMissed: true,
+                watchdogInterval: 60, baseReconnectDelay: 60,
+                urlSessionConfiguration: makeReplaySessionConfig()
+            )
+            client.connect()
+            wait(for: [requested], timeout: 2.0)
+            client.disconnect()
+            ReplayURLProtocol.onRequest = nil
+        }
+
+        connectOnce(["a"], expectingRequest: 1)
+        // The config reload after a new topic builds a client for the enlarged topic set.
+        connectOnce(["a", "b"], expectingRequest: 2)
+
+        XCTAssertEqual(ReplayURLProtocol.requestedURLs.count, 2)
+        for url in ReplayURLProtocol.requestedURLs {
+            XCTAssertTrue(url.contains("since=\(watermark)"), "unexpected replay: \(url)")
+        }
+        clearWatermark(serverURL)
     }
 }
