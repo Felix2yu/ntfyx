@@ -48,6 +48,24 @@ struct ClientSpec: Hashable {
     let authToken: String?
 }
 
+/// What a replayed catch-up leaves behind for its banner decision, per server: the totals a
+/// summary needs, plus at most `Ntfyx.catchUpIndividualBannerLimit` messages for the case
+/// where the "replay" was really a handful. Keeping every replayed message — tens of thousands
+/// of decoded rows for a busy server — was memory with no consumer.
+struct CatchUpTally {
+    var count = 0
+    var topics: Set<String> = []
+    var entries: [NtfyMessage] = []
+
+    mutating func add(_ message: NtfyMessage) {
+        count += 1
+        topics.insert(message.topic)
+        if entries.count < Ntfyx.catchUpIndividualBannerLimit {
+            entries.append(message)
+        }
+    }
+}
+
 final class Ntfyx: NtfyClientDelegate, @unchecked Sendable {
     private var clientBySpec: [ClientSpec: NtfyClient] = [:]
     private var clientToServer: [ObjectIdentifier: ClientSpec] = [:]  // which spec drove each client
@@ -63,7 +81,7 @@ final class Ntfyx: NtfyClientDelegate, @unchecked Sendable {
 
     /// Replayed (`since`) messages waiting for the replay to settle before their banners
     /// are decided, so a whole cached backlog costs one summary instead of thousands.
-    private var pendingCatchUp: [(serverURL: String, message: NtfyMessage)] = []
+    private var pendingCatchUp: [String: CatchUpTally] = [:]
     private var catchUpBannerTimer: Timer?
     static let catchUpBannerSettleTime: TimeInterval = 1.5
     static let catchUpIndividualBannerLimit = 3
@@ -454,16 +472,28 @@ final class Ntfyx: NtfyClientDelegate, @unchecked Sendable {
         }
         Log.info("📩 Catch-up on \(serverURL): \(batch.count) replayed message(s)")
 
-        pendingCatchUp.append(contentsOf: batch.map { (serverURL: serverURL, message: $0) })
+        for message in batch where !message.isActionEvent {
+            pendingCatchUp[serverURL, default: CatchUpTally()].add(message)
+        }
         scheduleCatchUpBanner()
 
-        let topics = Set(batch.map { TopicRef(serverURL: serverURL, topic: $0.topic) })
+        // Distinct topic names first: a replay of one busy topic would otherwise build tens of
+        // thousands of identical refs and hashes on the way to one notification per topic.
+        let topicNames = Set(batch.map(\.topic))
+        let topics = Set(topicNames.map { TopicRef(serverURL: serverURL, topic: $0) })
         // Resolved here because `ConfigManager.config` is main-thread state; the scripts
         // themselves are validated and spawned off-main — thousands of path checks would
-        // otherwise stall the UI again.
+        // otherwise stall the UI again. The lookup runs once per topic in the batch, not once
+        // per message, because each lookup walks the whole server and topic list.
         let runner = scriptRunner
+        var scriptByTopic: [String: String] = [:]
+        for topic in topicNames {
+            if let path = ConfigManager.shared.topicConfig(serverURL: serverURL, topic: topic)?.autoRunScript {
+                scriptByTopic[topic] = path
+            }
+        }
         let scripts = batch.compactMap { message -> (String, NtfyMessage)? in
-            guard let path = ConfigManager.shared.topicConfig(serverURL: serverURL, topic: message.topic)?.autoRunScript else { return nil }
+            guard let path = scriptByTopic[message.topic] else { return nil }
             return (path, message)
         }
 
@@ -519,30 +549,29 @@ final class Ntfyx: NtfyClientDelegate, @unchecked Sendable {
 
     /// A handful of messages missed while the app was away still gets its own banners;
     /// a whole replayed cache gets one line, because hundreds of sound-bearing banners
-    /// freeze notificationcenterd (see NotificationThrottle).
+    /// freeze notificationcenterd (see NotificationThrottle). Each server gets its own
+    /// decision and its own summary, since the banner shows the topics that were replayed.
     private func flushCatchUpBanners() {
         catchUpBannerTimer = nil
-        let pending = pendingCatchUp
+        let tallies = pendingCatchUp
         pendingCatchUp.removeAll()
-        guard !pending.isEmpty else { return }
 
         let manager = ensureNotificationManager()
-        if pending.count <= Self.catchUpIndividualBannerLimit {
-            for entry in pending {
-                manager.showNotification(
-                    for: entry.message,
-                    topicConfig: ConfigManager.shared.topicConfig(
-                        serverURL: entry.serverURL, topic: entry.message.topic
-                    ),
-                    serverURL: entry.serverURL
-                )
+        for (serverURL, tally) in tallies {
+            if tally.count <= Self.catchUpIndividualBannerLimit {
+                for message in tally.entries {
+                    manager.showNotification(
+                        for: message,
+                        topicConfig: ConfigManager.shared.topicConfig(
+                            serverURL: serverURL, topic: message.topic
+                        ),
+                        serverURL: serverURL
+                    )
+                }
+                continue
             }
-            return
+            manager.showCatchUpSummary(count: tally.count, topics: tally.topics.sorted())
         }
-        manager.showCatchUpSummary(
-            count: pending.count,
-            topics: Set(pending.map { $0.message.topic }).sorted()
-        )
     }
 
     /// Handles server-side "message_delete" (gone) / "message_clear" (marked read)

@@ -6,11 +6,17 @@ import Foundation
 actor MessageStore {
     private let db: SQLiteDatabase
 
+    /// Per-topic "everything up to this message time has been read", read once per topic.
+    /// Backfilled rows at or below it are stored as read, so a replay of messages that the
+    /// retention policy already pruned cannot refill the unread badge (see `markAllRead`).
+    private var readWatermarks: [TopicRef: Int] = [:]
+
     // MARK: - DDL
 
     private static let schema = """
     PRAGMA journal_mode=WAL;
     PRAGMA busy_timeout=5000;
+    PRAGMA synchronous=NORMAL;
 
     CREATE TABLE IF NOT EXISTS messages (
         rowid_pk        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,6 +50,7 @@ actor MessageStore {
         last_synced_id   TEXT,
         last_synced_time INTEGER,
         last_sync_at     INTEGER,
+        max_read_time    INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY(server_url, topic)
     );
     """
@@ -59,6 +66,19 @@ actor MessageStore {
         }
         db = try SQLiteDatabase(path: dbPath)
         try db.execute(Self.schema)
+        try Self.migrate(db)
+    }
+
+    /// Adds columns that `CREATE TABLE IF NOT EXISTS` cannot retrofit: an existing database
+    /// keeps its old table, so each later column needs its own ALTER. Re-running is normal —
+    /// SQLite answers it with "duplicate column name", which means the table is current.
+    private static func migrate(_ db: SQLiteDatabase) throws {
+        do {
+            try db.execute("ALTER TABLE sync_state ADD COLUMN max_read_time INTEGER NOT NULL DEFAULT 0")
+        } catch let error as SQLiteError {
+            guard case .execFailed(let message) = error,
+                  message.contains("duplicate column name") else { throw error }
+        }
     }
 
     /// In-memory store for testing.
@@ -77,12 +97,21 @@ actor MessageStore {
 
     /// Inserts a message. Existing rows are left untouched (keeps read/tombstone state),
     /// which makes poll replays idempotent and prevents deleted messages from "resurrecting".
-    func upsert(_ message: NtfyMessage, serverURL: String, rawJSON: String? = nil) throws {
+    ///
+    /// - Parameter asBackfill: true when the row comes from the server's cache (a poll replay or
+    ///   a catch-up burst), false for a live delivery. A backfilled row at or below the topic's
+    ///   read watermark is stored as read: retention removes read rows, so replaying the cache
+    ///   brings back messages the user already read, and storing them unread is what made the
+    ///   badge jump after a new subscription. A live message is never assumed read — it can well
+    ///   land in the same second the topic was marked read.
+    func upsert(
+        _ message: NtfyMessage, serverURL: String, rawJSON: String? = nil, asBackfill: Bool = false
+    ) throws {
         let sql = """
         INSERT OR IGNORE INTO messages
             (server_url, topic, msg_id, sequence_id, event, time, message, title, priority,
              tags_json, click, actions_json, attachment_json, content_type, is_read, is_deleted, raw_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
         """
         let statement = try db.prepare(sql)
         defer { statement.finalize() }
@@ -101,8 +130,32 @@ actor MessageStore {
         try statement.bindOptionalText(Self.encodedJSON(message.actions), at: 12)
         try statement.bindOptionalText(Self.encodedJSON(message.attachment), at: 13)
         try statement.bindOptionalText(message.contentType, at: 14)
-        try statement.bindOptionalText(rawJSON, at: 15)
+        // Zero without a backfill, so the comparison below also yields "unread".
+        var watermark = 0
+        if asBackfill {
+            watermark = try readWatermark(serverURL: serverURL, topic: message.topic)
+        }
+        try statement.bindInt(message.time <= watermark ? 1 : 0, at: 15)
+        try statement.bindOptionalText(rawJSON, at: 16)
         try statement.run()
+    }
+
+    /// The topic's read watermark, loaded from `sync_state` on first touch and kept in memory:
+    /// every stored message needs it, and a replay can carry tens of thousands.
+    private func readWatermark(serverURL: String, topic: String) throws -> Int {
+        let ref = TopicRef(serverURL: serverURL, topic: topic)
+        if let cached = readWatermarks[ref] { return cached }
+        let rows: [Int] = try db.query(
+            "SELECT max_read_time FROM sync_state WHERE server_url = ? AND topic = ?",
+            bind: { statement in
+                try statement.bindText(serverURL, at: 1)
+                try statement.bindText(topic, at: 2)
+            },
+            row: { statement in statement.columnInt(0) ?? 0 }
+        )
+        let watermark = rows.first ?? 0
+        readWatermarks[ref] = watermark
+        return watermark
     }
 
     // MARK: - Action events (message_delete / message_clear)
@@ -192,7 +245,7 @@ actor MessageStore {
                         revoked.append(id)
                     }
                 } else if event.event == "message" {
-                    try upsert(event, serverURL: serverURL)
+                    try upsert(event, serverURL: serverURL, asBackfill: true)
                 }
             }
             return revoked
@@ -242,6 +295,51 @@ actor MessageStore {
         try statement.bindText(serverURL, at: 2)
         try statement.bindText(topic, at: 3)
         try statement.run()
+
+        try recordTopicRead(serverURL: serverURL, topic: topic, read: read)
+    }
+
+    /// Records how far the topic has been read: `markAllRead` means "everything I have is read",
+    /// so the watermark becomes its newest row. Retention then erases those rows, and without
+    /// this record a replay of the server cache would file them as unread again. Marking the
+    /// topic unread clears the record instead, so the messages count as unread if they return.
+    private func recordTopicRead(serverURL: String, topic: String, read: Bool) throws {
+        var value = 0
+        if read {
+            let rows: [Int] = try db.query(
+                "SELECT COALESCE(MAX(time), 0) FROM messages WHERE server_url = ? AND topic = ? AND is_deleted = 0",
+                bind: { statement in
+                    try statement.bindText(serverURL, at: 1)
+                    try statement.bindText(topic, at: 2)
+                },
+                row: { statement in statement.columnInt(0) ?? 0 }
+            )
+            value = rows.first ?? 0
+        }
+
+        // Monotonic while reading: an older batch can arrive after the watermark was raised,
+        // and it still belongs to the range the user already went through.
+        let sql = read
+            ? """
+            INSERT INTO sync_state (server_url, topic, max_read_time) VALUES (?, ?, ?)
+            ON CONFLICT(server_url, topic) DO UPDATE SET
+                max_read_time = MAX(sync_state.max_read_time, excluded.max_read_time)
+            """
+            : """
+            INSERT INTO sync_state (server_url, topic, max_read_time) VALUES (?, ?, ?)
+            ON CONFLICT(server_url, topic) DO UPDATE SET max_read_time = excluded.max_read_time
+            """
+        let statement = try db.prepare(sql)
+        defer { statement.finalize() }
+        try statement.bindText(serverURL, at: 1)
+        try statement.bindText(topic, at: 2)
+        try statement.bindInt(value, at: 3)
+        try statement.run()
+
+        let ref = TopicRef(serverURL: serverURL, topic: topic)
+        readWatermarks[ref] = read
+            ? max(try readWatermark(serverURL: serverURL, topic: topic), value)
+            : 0
     }
 
     /// Applies a server-side `message_clear` event (the server's "mark as read"): the
@@ -309,6 +407,9 @@ actor MessageStore {
             try statement.bindText(topic, at: 2)
             try statement.run()
         }
+        // The stored watermark is gone with the row, so the cached one has to go too —
+        // otherwise re-adding the topic would file its replayed messages as read.
+        readWatermarks.removeValue(forKey: TopicRef(serverURL: serverURL, topic: topic))
     }
 
     // MARK: - Retention (audit 2.4)
@@ -518,15 +619,6 @@ actor MessageStore {
             return (TopicRef(serverURL: serverURL, topic: topic), count)
         })
         return rows.reduce(into: [TopicRef: Int]()) { $0[$1.0] = $1.1 }
-    }
-
-    /// Total unread count across all topics.
-    func totalUnreadCount() throws -> Int {
-        let sql = "SELECT COUNT(*) FROM messages WHERE is_deleted = 0 AND is_read = 0"
-        let rows = try db.query(sql, bind: { _ in }, row: { statement -> Int in
-            statement.columnInt(0) ?? 0
-        })
-        return rows.first ?? 0
     }
 
     /// Number of non-deleted messages stored for a topic.

@@ -157,6 +157,7 @@ final class NtfyClient: NSObject, @unchecked Sendable {
         // The key deliberately ignores the topic list: adding a subscription must not
         // discard the watermark of the topics that were already caught up, which used to
         // drop the connection back to `since=all` and replay every topic's whole cache.
+        Self.seedLegacyWatermark(serverURL: serverURL, fetchMissed: fetchMissed)
         self.lastMessageTimeKey = Self.watermarkKey(serverURL: serverURL, fetchMissed: fetchMissed)
         self.lastMessageTime = UserDefaults.standard.integer(forKey: lastMessageTimeKey)
 
@@ -186,6 +187,32 @@ final class NtfyClient: NSObject, @unchecked Sendable {
     /// fetch-missed group, never to the topic list.
     static func watermarkKey(serverURL: String, fetchMissed: Bool) -> String {
         "lastMessageTime-\(serverURL)-\(fetchMissed ? 1 : 0)"
+    }
+
+    /// Builds before the key stopped carrying the topic list stored the watermark under
+    /// `lastMessageTime-<server>-<topics>`, so the new key starts empty and the first connect
+    /// after an upgrade would replay `since=all` — which re-files every message the retention
+    /// policy already pruned. Carry the newest legacy value over instead, and drop the legacy
+    /// keys so the scan happens once per server.
+    private static func seedLegacyWatermark(serverURL: String, fetchMissed: Bool) {
+        guard fetchMissed else { return }
+        let defaults = UserDefaults.standard
+        let key = watermarkKey(serverURL: serverURL, fetchMissed: fetchMissed)
+        guard defaults.integer(forKey: key) == 0 else { return }
+
+        let prefix = "lastMessageTime-\(serverURL)-"
+        var legacyKeys: [String] = []
+        var newest = 0
+        for candidate in defaults.dictionaryRepresentation().keys
+        where candidate.hasPrefix(prefix) && candidate != key {
+            legacyKeys.append(candidate)
+            newest = max(newest, defaults.integer(forKey: candidate))
+        }
+        guard newest > 0 else { return }
+
+        defaults.set(newest, forKey: key)
+        for legacyKey in legacyKeys { defaults.removeObject(forKey: legacyKey) }
+        Log.info("Migrated fetch-missed watermark for \(serverURL) to \(newest)")
     }
 
     // Thread-safe delegate call helper

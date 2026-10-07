@@ -29,8 +29,7 @@ final class HistorySyncService: ObservableObject {
     /// Network seam so tests can script failures without a live server.
     var poll: @Sendable (
         _ serverURL: String, _ topic: String, _ since: String, _ authToken: String?,
-        _ onMessage: @escaping @Sendable (NtfyMessage) async throws -> Void,
-        _ onActionEvent: @escaping @Sendable (NtfyMessage) async throws -> Void
+        _ onEvents: @escaping @Sendable ([NtfyMessage]) async throws -> Void
     ) async throws -> NtfyPollClient.PollResult = NtfyPollClient.poll
 
     /// audit 2.5: a rate-limited sync retries on its own once the window lapses.
@@ -104,15 +103,12 @@ final class HistorySyncService: ObservableObject {
                 ref.topic,
                 since,
                 token,
-                { message in
-                    try await store.upsert(message, serverURL: ref.serverURL)
-                },
-                { event in
-                    try await store.applyActionEvent(event, serverURL: ref.serverURL)
-                    // A replayed clear/delete also has to withdraw the banner the message
-                    // left on screen — Notification Center is not part of the history store.
-                    if let messageID = try await store.targetMessageID(for: event, serverURL: ref.serverURL) {
-                        NotificationManager.shared.revoke(messageIDs: [messageID])
+                { events in
+                    // One transaction per chunk, and one revoke call for however many banners
+                    // the chunk's delete/clear events withdrew.
+                    let revoked = try await store.applyBatch(events, serverURL: ref.serverURL)
+                    if !revoked.isEmpty {
+                        NotificationManager.shared.revoke(messageIDs: revoked)
                     }
                 }
             )

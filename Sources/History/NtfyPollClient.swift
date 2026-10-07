@@ -4,6 +4,45 @@ import Foundation
 /// `GET {topic}/json?poll=1&since=...` (NDJSON stream), decoding line by line.
 enum NtfyPollClient {
 
+    /// Events handed to `onEvents` at once, matching `MessageStore.applyBatch`'s appetite:
+    /// one transaction per chunk instead of one per row.
+    static let eventBatchSize = 200
+
+    /// Session configuration factory. Only here so the streaming decode path can be tested
+    /// against a `URLProtocol`; the long resource timeout is real production behaviour — a
+    /// full-history replay can run for minutes while time-to-first-byte stays bounded.
+    nonisolated(unsafe) static var configuration: @Sendable () -> URLSessionConfiguration = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForResource = 3600
+        return config
+    }
+
+    nonisolated(unsafe) private static var _session: URLSession?
+    private static let sessionLock = NSLock()
+
+    /// One session for every poll. An ephemeral session owns its connection pool, so building
+    /// one per request meant a fresh TCP+TLS handshake for each topic opened in the history
+    /// window, and the `finishTasksAndInvalidate` at the end threw away the keep-alive
+    /// connection the next poll would have reused.
+    private static func session() -> URLSession {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        if let existing = _session { return existing }
+        let created = URLSession(configuration: configuration())
+        _session = created
+        return created
+    }
+
+    /// Drops the shared session so the next poll builds one from the current `configuration`;
+    /// tests swap that, the app itself keeps one session for its whole life.
+    static func resetSession() {
+        sessionLock.lock()
+        let old = _session
+        _session = nil
+        sessionLock.unlock()
+        old?.finishTasksAndInvalidate()
+    }
+
     enum PollError: Error, LocalizedError {
         case http(status: Int, retryAfter: TimeInterval?)
         case network(Error)
@@ -36,15 +75,17 @@ enum NtfyPollClient {
         var newestMessage: NtfyMessage?
     }
 
-    /// Streams the poll response, invoking `onMessage` for each regular message and
-    /// `onActionEvent` for server-side delete/clear events (the fork replays those on `since`).
+    /// Streams the poll response and hands the replayed events over in batches. A full sync
+    /// can carry tens of thousands of rows, and one write transaction per row would keep the
+    /// store's serial queue busy — and the UI waiting on it — for minutes. `onEvents` receives
+    /// messages and delete/clear events in the order the server sent them, so an event still
+    /// lands after the message it targets.
     static func poll(
         serverURL: String,
         topic: String,
         since: String,
         authToken: String?,
-        onMessage: @escaping @Sendable (NtfyMessage) async throws -> Void,
-        onActionEvent: @escaping @Sendable (NtfyMessage) async throws -> Void
+        onEvents: @escaping @Sendable ([NtfyMessage]) async throws -> Void
     ) async throws -> PollResult {
         guard var components = URLComponents(string: serverURL) else {
             throw PollError.network(URLError(.badURL))
@@ -67,10 +108,7 @@ enum NtfyPollClient {
             request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }
 
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForResource = 3600
-        let session = URLSession(configuration: config)
-        defer { session.finishTasksAndInvalidate() }
+        let session = Self.session()
 
         let (bytes, response): (URLSession.AsyncBytes, URLResponse)
         do {
@@ -86,12 +124,14 @@ enum NtfyPollClient {
         }
 
         var result = PollResult()
+        var batch: [NtfyMessage] = []
+        let decoder = JSONDecoder()
         for try await line in bytes.lines {
             guard !line.isEmpty else { continue }
             guard let data = line.data(using: .utf8) else { continue }
             let message: NtfyMessage
             do {
-                message = try JSONDecoder().decode(NtfyMessage.self, from: data)
+                message = try decoder.decode(NtfyMessage.self, from: data)
             } catch {
                 Log.error("Poll: failed to decode line: \(error)")
                 continue
@@ -103,13 +143,21 @@ enum NtfyPollClient {
                 if message.time >= (result.newestMessage?.time ?? .min) {
                     result.newestMessage = message
                 }
-                try await onMessage(message)
+                batch.append(message)
             case NtfyMessage.deleteEvent, NtfyMessage.clearEvent:
                 result.actionEventCount += 1
-                try await onActionEvent(message)
+                batch.append(message)
             default:
-                break  // open / keepalive / poll_request
+                continue  // open / keepalive / poll_request
             }
+
+            if batch.count >= Self.eventBatchSize {
+                try await onEvents(batch)
+                batch.removeAll(keepingCapacity: true)
+            }
+        }
+        if !batch.isEmpty {
+            try await onEvents(batch)
         }
         return result
     }

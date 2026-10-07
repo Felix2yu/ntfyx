@@ -120,6 +120,14 @@ final class HistoryViewModel: ObservableObject {
     private var globalSearchGeneration = 0
     private var cancellables: Set<AnyCancellable> = []
 
+    /// Store changes arrive one per message (live) or per replay chunk, and each one used to
+    /// mean a sidebar aggregate plus a page reload. They are collected for a settle window and
+    /// applied once, keeping the topics they named so the open topic still refreshes.
+    static let storeChangeSettleTime: TimeInterval = 0.25
+    private var pendingStoreChangeTopics: Set<TopicRef> = []
+    private var pendingStoreChangeIsGlobal = false
+    private var storeChangeTimer: Timer?
+
     // MARK: - Init
 
     init(store: MessageStore, syncService: HistorySyncService) {
@@ -130,7 +138,7 @@ final class HistoryViewModel: ObservableObject {
         NotificationCenter.default.publisher(for: .historyStoreDidChange)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in
-                self?.handleStoreChange(notification)
+                self?.noteStoreChange(notification)
             }
             .store(in: &cancellables)
 
@@ -669,9 +677,32 @@ final class HistoryViewModel: ObservableObject {
 
     // MARK: - Live updates
 
-    private func handleStoreChange(_ notification: Notification) {
+    private func noteStoreChange(_ notification: Notification) {
+        if let ref = notification.userInfo?["topicRef"] as? TopicRef {
+            pendingStoreChangeTopics.insert(ref)
+        } else {
+            // A change that names no topic (retention, a whole-store edit) can affect anything.
+            pendingStoreChangeIsGlobal = true
+        }
+        storeChangeTimer?.invalidate()
+        storeChangeTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.storeChangeSettleTime, repeats: false
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.flushStoreChanges() }
+        }
+    }
+
+    private func flushStoreChanges() {
+        storeChangeTimer = nil
+        let refs = pendingStoreChangeTopics
+        let isGlobal = pendingStoreChangeIsGlobal
+        pendingStoreChangeTopics.removeAll()
+        pendingStoreChangeIsGlobal = false
+        guard !refs.isEmpty || isGlobal else { return }
+
         refreshSidebar()
-        if let ref = notification.userInfo?["topicRef"] as? TopicRef, ref == selectedTopic {
+        guard let selected = selectedTopic else { return }
+        if isGlobal || refs.contains(selected) {
             reloadMessages()
         }
     }

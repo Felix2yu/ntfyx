@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 @preconcurrency import UserNotifications
 import AppKit
 
@@ -14,6 +15,17 @@ final class NotificationManager: NSObject, @unchecked Sendable {
 
     private let lock = NSLock()
     private var _scriptRunner: (any ScriptRunnerProtocol)?
+
+    /// Icons and action categories describe a topic, not a message, but both used to be
+    /// rebuilt for every banner: the SF Symbol round trip (TIFF → PNG) per message, and a
+    /// `getNotificationCategories` + `setNotificationCategories` pair — two XPC calls plus a copy
+    /// of the whole registered set — per message too. Memoizing by shape means the render happens
+    /// once per distinct symbol and the registration once per distinct action set.
+    private let memoLock = NSLock()
+    private var _iconPNG: [String: Data] = [:]
+    private var _iconRenderFailures: Set<String> = []
+    private var _iconsDirectoryReady = false
+    private var _registeredCategoryKeys: Set<String> = []
 
     private let throttle = NotificationThrottle()
 
@@ -45,6 +57,12 @@ final class NotificationManager: NSObject, @unchecked Sendable {
     /// Clears all notification categories to remove stale actions
     func clearCategories() {
         center.setNotificationCategories([])
+        // The memo has to go with them: an emptied Notification Center is not "already
+        // registered", and the next banner of a known shape would otherwise arrive without
+        // its buttons.
+        memoLock.lock()
+        _registeredCategoryKeys.removeAll()
+        memoLock.unlock()
         Log.info("Cleared notification categories")
     }
 
@@ -341,13 +359,31 @@ final class NotificationManager: NSObject, @unchecked Sendable {
         if let actions = topicConfig.actions, !actions.isEmpty {
             // Config actions take priority - use them instead of message actions
             let categoryId = "topic-\(message.topic)-actions"
-            registerCategory(categoryId: categoryId, actions: actions)
+            registerCategory(
+                identifier: categoryId,
+                actions: actions.prefix(4).map { action in
+                    UNNotificationAction(
+                        identifier: "action-\(action.title.lowercased().replacingOccurrences(of: " ", with: "-"))",
+                        title: action.title,
+                        options: [.foreground]
+                    )
+                }
+            )
             content.categoryIdentifier = categoryId
             Log.info("Using \(actions.count) actions from config for topic \(message.topic)")
         } else if let messageActions = message.actions, !messageActions.isEmpty {
             // No config actions - use message actions
-            let categoryId = "msg-\(message.id)-actions"
-            registerCategoryFromMessage(categoryId: categoryId, actions: messageActions)
+            let categoryId = Self.messageActionCategoryID(messageActions)
+            registerCategory(
+                identifier: categoryId,
+                actions: messageActions.prefix(4).enumerated().map { (index, action) in
+                    UNNotificationAction(
+                        identifier: "ntfy-action-\(index)",
+                        title: action.label,
+                        options: [.foreground]
+                    )
+                }
+            )
             content.categoryIdentifier = categoryId
 
             // Store action URLs, types, and HTTP details in userInfo for later retrieval
@@ -429,11 +465,9 @@ final class NotificationManager: NSObject, @unchecked Sendable {
 
     /// Creates an icon attachment from the topic configuration
     private func createIconAttachment(from topicConfig: TopicConfig) -> UNNotificationAttachment? {
-        // Try SF Symbol first
-        if let symbolName = topicConfig.iconSymbol {
-            if let symbolImage = createSFSymbolImage(named: symbolName) {
-                return createAttachment(from: symbolImage)
-            }
+        // Try SF Symbol first — the same symbol renders identically, so one round trip per name
+        if let symbolName = topicConfig.iconSymbol, let symbolImage = createSFSymbolImage(named: symbolName) {
+            return iconAttachment(symbolName: symbolName, image: symbolImage)
         }
 
         // Try local file path
@@ -451,50 +485,97 @@ final class NotificationManager: NSObject, @unchecked Sendable {
         return nil
     }
 
+    /// The symbol *render* is memoized; the attachment is built per message. Notification Center
+    /// moves an attachment's file into its own store when the request is added, so a cached
+    /// attachment points at a path that stops existing right after the first banner, and every
+    /// later one fails with `UNErrorDomain 104` and shows nothing. A failed conversion is
+    /// remembered too, so a bad symbol name is not retried per message; the file-path icon stays
+    /// uncached because its contents can change.
+    private func iconAttachment(symbolName: String, image: NSImage) -> UNNotificationAttachment? {
+        memoLock.lock()
+        defer { memoLock.unlock() }
+
+        let pngData: Data
+        if let cached = _iconPNG[symbolName] {
+            pngData = cached
+        } else if _iconRenderFailures.contains(symbolName) {
+            return nil
+        } else if let rendered = Self.pngData(for: image) {
+            _iconPNG[symbolName] = rendered
+            pngData = rendered
+        } else {
+            _iconRenderFailures.insert(symbolName)
+            return nil
+        }
+
+        if !_iconsDirectoryReady {
+            try? FileManager.default.createDirectory(at: Self.iconCacheDirectory, withIntermediateDirectories: true)
+            _iconsDirectoryReady = true
+        }
+        let fileURL = Self.iconCacheDirectory.appendingPathComponent(Self.iconFileName(for: symbolName))
+        do {
+            try pngData.write(to: fileURL, options: .atomic)
+            return try UNNotificationAttachment(identifier: "icon", url: fileURL, options: nil)
+        } catch {
+            Log.error("Failed to write SF Symbol attachment: \(error)")
+            return nil
+        }
+    }
+
     /// Creates an NSImage from an SF Symbol
     private func createSFSymbolImage(named symbolName: String) -> NSImage? {
+        // Tinted, because a symbol is a template image: rasterized unstyled it is solid black,
+        // which disappears on a dark notification background.
         let config = NSImage.SymbolConfiguration(pointSize: 64, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.controlAccentColor]))
         return NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
             .withSymbolConfiguration(config)
     }
 
-    /// Converts an NSImage to a notification attachment
-    private func createAttachment(from image: NSImage) -> UNNotificationAttachment? {
+    private static func pngData(for image: NSImage) -> Data? {
         guard let tiffData = image.tiffRepresentation,
-              let bitmapImage = NSBitmapImageRep(data: tiffData),
-              let pngData = bitmapImage.representation(using: .png, properties: [:]) else {
-            return nil
-        }
-
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileName = "\(UUID().uuidString).png"
-        let fileURL = tempDir.appendingPathComponent(fileName)
-
-        do {
-            try pngData.write(to: fileURL)
-            let attachment = try UNNotificationAttachment(identifier: UUID().uuidString, url: fileURL, options: nil)
-            try? FileManager.default.removeItem(at: fileURL)
-            return attachment
-        } catch {
-            Log.error("Failed to write SF Symbol attachment: \(error)")
-            try? FileManager.default.removeItem(at: fileURL)
-            return nil
-        }
+              let bitmap = NSBitmapImageRep(data: tiffData) else { return nil }
+        return bitmap.representation(using: .png, properties: [:])
     }
 
-    /// Registers a notification category with actions from config
-    private func registerCategory(categoryId: String, actions: [NotificationAction]) {
-        let unActions = actions.prefix(4).map { action in
-            UNNotificationAction(
-                identifier: "action-\(action.title.lowercased().replacingOccurrences(of: " ", with: "-"))",
-                title: action.title,
-                options: [.foreground]
-            )
+    static func iconFileName(for symbolName: String) -> String {
+        let safeName = symbolName.map {
+            $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_" ? $0 : "_"
         }
+        return String(safeName) + ".png"
+    }
+
+    private static let iconCacheDirectory: URL = {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return caches.appendingPathComponent("ntfyx/icons", isDirectory: true)
+    }()
+
+    /// Identifier shared by every message whose notification buttons look the same. The
+    /// buttons resolve their URLs and types from each notification's own userInfo, so the
+    /// category only has to describe the labels — keying it by message id registered one new
+    /// category per message and never removed any, so the set Notification Center holds grew
+    /// without bound.
+    static func messageActionCategoryID(_ actions: [NtfyMessage.NtfyAction]) -> String {
+        let shape = actions.prefix(4).map { "\($0.action):\($0.label)" }.joined(separator: "|")
+        let digest = SHA256.hash(data: Data(shape.utf8))
+        return "msg-actions-" + digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Registers a category unless this identifier + action set has already been registered:
+    /// the get/set pair is two XPC calls plus a copy of the entire registered set, and every
+    /// banner of a topic asks for exactly the same one.
+    private func registerCategory(identifier: String, actions: [UNNotificationAction]) {
+        let key = identifier + "|" + actions.map { "\($0.identifier)=\($0.title)" }.joined(separator: ",")
+        memoLock.lock()
+        let seen = _registeredCategoryKeys.contains(key)
+        if !seen { _registeredCategoryKeys.insert(key) }
+        memoLock.unlock()
+        guard !seen else { return }
 
         let category = UNNotificationCategory(
-            identifier: categoryId,
-            actions: unActions,
+            identifier: identifier,
+            actions: actions,
             intentIdentifiers: [],
             options: []
         )
@@ -502,31 +583,7 @@ final class NotificationManager: NSObject, @unchecked Sendable {
         center.getNotificationCategories { existingCategories in
             // Remove any existing category with the same ID before inserting
             // (Set.insert won't replace, so we must remove first)
-            var categories = existingCategories.filter { $0.identifier != categoryId }
-            categories.insert(category)
-            self.center.setNotificationCategories(categories)
-        }
-    }
-
-    /// Registers a notification category with actions from ntfy message
-    private func registerCategoryFromMessage(categoryId: String, actions: [NtfyMessage.NtfyAction]) {
-        let unActions = actions.prefix(4).enumerated().map { (index, action) in
-            UNNotificationAction(
-                identifier: "ntfy-action-\(index)",
-                title: action.label,
-                options: [.foreground]
-            )
-        }
-
-        let category = UNNotificationCategory(
-            identifier: categoryId,
-            actions: unActions,
-            intentIdentifiers: [],
-            options: []
-        )
-
-        center.getNotificationCategories { existingCategories in
-            var categories = existingCategories.filter { $0.identifier != categoryId }
+            var categories = existingCategories.filter { $0.identifier != identifier }
             categories.insert(category)
             self.center.setNotificationCategories(categories)
         }
