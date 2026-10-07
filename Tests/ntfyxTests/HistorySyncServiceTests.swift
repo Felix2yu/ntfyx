@@ -39,12 +39,12 @@ final class HistorySyncServiceTests: XCTestCase {
         let (service, store, ref) = try makeFixture()
         let box = Box()
         let message = makeMessage(id: "m1")
-        service.poll = { _, _, _, _, onMessage, _ in
+        service.poll = { _, _, _, _, onEvents in
             box.attempts += 1
             if box.attempts == 1 {
                 throw NtfyPollClient.PollError.http(status: 429, retryAfter: 1)
             }
-            try await onMessage(message)
+            try await onEvents([message])
             var result = NtfyPollClient.PollResult()
             result.messageCount = 1
             result.newestMessage = message
@@ -64,7 +64,7 @@ final class HistorySyncServiceTests: XCTestCase {
     func testAutoRetryStopsAtBudgetAndManualSyncResetsIt() async throws {
         let (service, _, ref) = try makeFixture()
         let box = Box()
-        service.poll = { _, _, _, _, _, _ in
+        service.poll = { _, _, _, _, _ in
             box.attempts += 1
             throw NtfyPollClient.PollError.http(status: 429, retryAfter: 1)
         }
@@ -83,7 +83,7 @@ final class HistorySyncServiceTests: XCTestCase {
     func testPlainFailureDoesNotAutoRetry() async throws {
         let (service, _, ref) = try makeFixture()
         let box = Box()
-        service.poll = { _, _, _, _, _, _ in
+        service.poll = { _, _, _, _, _ in
             box.attempts += 1
             throw NtfyPollClient.PollError.http(status: 500, retryAfter: nil)
         }

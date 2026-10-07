@@ -520,4 +520,38 @@ final class NtfyClientTests: XCTestCase {
         }
         clearWatermark(serverURL)
     }
+
+    /// Builds before the key stopped carrying the topic list stored the watermark under one
+    /// key per topic set, so after an upgrade the current key starts empty and the first
+    /// connect replays `since=all`. The newest legacy value has to be carried over — and the
+    /// legacy keys dropped, so the scan happens once rather than on every launch.
+    func testLegacyTopicScopedWatermarkIsCarriedOver() {
+        let serverURL = "https://replay-legacy-watermark.test"
+        let legacyKey = "lastMessageTime-\(serverURL)-t,u"
+        let currentKey = NtfyClient.watermarkKey(serverURL: serverURL, fetchMissed: true)
+        UserDefaults.standard.removeObject(forKey: currentKey)
+        UserDefaults.standard.set(1_700_000_000, forKey: legacyKey)
+        ReplayURLProtocol.reset(lines: [])
+
+        let requested = expectation(description: "connect request")
+        ReplayURLProtocol.onRequest = { _ in requested.fulfill() }
+        let client = NtfyClient(
+            serverURL: serverURL, topics: ["t", "u"], fetchMissed: true,
+            watchdogInterval: 60, baseReconnectDelay: 60,
+            urlSessionConfiguration: makeReplaySessionConfig()
+        )
+        client.connect()
+        wait(for: [requested], timeout: 2.0)
+        client.disconnect()
+        ReplayURLProtocol.onRequest = nil
+
+        XCTAssertTrue(
+            ReplayURLProtocol.requestedURLs.contains { $0.contains("since=1700000000") },
+            "expected the migrated watermark, got \(ReplayURLProtocol.requestedURLs)"
+        )
+        XCTAssertEqual(UserDefaults.standard.integer(forKey: currentKey), 1_700_000_000)
+        XCTAssertNil(UserDefaults.standard.object(forKey: legacyKey))
+
+        UserDefaults.standard.removeObject(forKey: currentKey)
+    }
 }

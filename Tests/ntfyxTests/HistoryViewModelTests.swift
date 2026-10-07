@@ -398,6 +398,35 @@ final class HistoryViewModelTests: XCTestCase {
         }
     }
 
+    /// Store changes used to mean one sidebar aggregate plus one page reload each; they now
+    /// settle into a single pass. A burst for the open topic still lands the messages.
+    func testStoreChangeBurstSettlesIntoOneRefresh() async throws {
+        let store = try MessageStore.inMemory()
+        let sync = HistorySyncService(store: store)
+        sync.poll = { _, _, _, _, _ in NtfyPollClient.PollResult() }
+        let vm = HistoryViewModel(store: store, syncService: sync)
+        let ref = TopicRef(serverURL: "https://s.example", topic: "alpha")
+
+        try await store.upsert(makeMessage(id: "a1", topic: "alpha"), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "a2", topic: "alpha"), serverURL: "https://s.example")
+
+        vm.selectTopic(ref)
+        try await waitUntil { vm.messages.count == 2 }
+        let rendersAfterLoad = vm.messages.count
+
+        // A replay chunk hands over one notification per topic; ten of them must still leave
+        // the list intact rather than reloading it ten times over.
+        for _ in 0..<10 {
+            NotificationCenter.default.post(
+                name: .historyStoreDidChange, object: nil, userInfo: ["topicRef": ref]
+            )
+        }
+        try await Task.sleep(nanoseconds: 600_000_000)
+
+        XCTAssertEqual(vm.messages.count, rendersAfterLoad)
+        XCTAssertEqual(vm.unread(for: ref), 2)
+    }
+
     private func waitUntil(timeoutSeconds: TimeInterval = 5, _ condition: @MainActor () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         while !condition() {

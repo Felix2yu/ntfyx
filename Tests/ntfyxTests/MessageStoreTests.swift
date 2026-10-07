@@ -14,6 +14,11 @@ final class MessageStoreTests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// Total unread across topics, read through the same aggregate the app uses.
+    private func totalUnread() async throws -> Int {
+        try await store.unreadCountsByTopic().values.reduce(0, +)
+    }
+
     private func makeMessage(
         id: String = "abc123",
         topic: String = "alerts",
@@ -176,6 +181,122 @@ final class MessageStoreTests: XCTestCase {
         XCTAssertFalse(others[0].isRead)
     }
 
+    // MARK: - Read watermark
+
+    /// Replays the way `applyBatch` does it: the row comes from the server's cache, so the
+    /// watermark applies to it.
+    private func backfill(
+        _ message: NtfyMessage, serverURL: String
+    ) async throws {
+        try await store.upsert(message, serverURL: serverURL, asBackfill: true)
+    }
+
+    /// The unread backlash after adding a subscription: retention drops the read rows
+    /// `markAllRead` just touched, the next `since=all` replay re-inserts them, and without
+    /// the watermark they come back unread — refilling the badge with read messages.
+    func testReplayAfterRetentionLandsReadBelowWatermark() async throws {
+        try await store.upsert(makeMessage(id: "old", time: 1_000), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "new", time: 2_000), serverURL: "https://s.example")
+        try await store.markAllRead(serverURL: "https://s.example", topic: "alerts")
+
+        let pruned = try await store.enforceRetention(
+            MessageStore.RetentionPolicy(tombstoneGraceDays: 0, readRetentionDays: 0, maxReadRowsPerTopic: 1)
+        )
+        XCTAssertEqual(pruned, 1)
+
+        try await backfill(makeMessage(id: "old", time: 1_000), serverURL: "https://s.example")
+
+        let messages = try await store.messages(serverURL: "https://s.example", topic: "alerts")
+        XCTAssertEqual(messages.count, 2)
+        XCTAssertTrue(messages.allSatisfy { $0.isRead })
+        let unread = try await totalUnread()
+        XCTAssertEqual(unread, 0)
+    }
+
+    /// The watermark covers what was read, not everything the replay carries: a message newer
+    /// than the newest row at mark time still counts.
+    func testBackfillNewerThanWatermarkStaysUnread() async throws {
+        try await store.upsert(makeMessage(id: "m1", time: 1_000), serverURL: "https://s.example")
+        try await store.markAllRead(serverURL: "https://s.example", topic: "alerts")
+
+        try await backfill(makeMessage(id: "m2", time: 2_000), serverURL: "https://s.example")
+
+        let messages = try await store.messages(serverURL: "https://s.example", topic: "alerts")
+        XCTAssertEqual(messages.first { $0.message.id == "m2" }?.isRead, false)
+        let unread = try await totalUnread()
+        XCTAssertEqual(unread, 1)
+    }
+
+    /// Marking a topic unread is the user asking for those messages again, so the record goes
+    /// away and a replay of the same message counts as unread.
+    func testMarkAllUnreadClearsWatermark() async throws {
+        try await store.upsert(makeMessage(id: "m1", time: 1_000), serverURL: "https://s.example")
+        try await store.markAllRead(serverURL: "https://s.example", topic: "alerts")
+
+        // Physically remove the row, so the re-insert is not the idempotent `INSERT OR IGNORE`
+        // that would keep the existing read flag. Tombstone rules need a grace period above
+        // zero (0 disables the rule), so the cutoff is pushed past the tombstone's timestamp.
+        try await store.tombstoneMessage(serverURL: "https://s.example", topic: "alerts", messageID: "m1")
+        let pruned = try await store.enforceRetention(
+            MessageStore.RetentionPolicy(tombstoneGraceDays: 1, readRetentionDays: 0, maxReadRowsPerTopic: 0),
+            now: Date().addingTimeInterval(2 * 86_400)
+        )
+        XCTAssertEqual(pruned, 1)
+
+        try await store.markAllRead(false, serverURL: "https://s.example", topic: "alerts")
+        try await backfill(makeMessage(id: "m1", time: 1_000), serverURL: "https://s.example")
+
+        let unread = try await totalUnread()
+        XCTAssertEqual(unread, 1)
+    }
+
+    /// A deleted subscription loses its watermark together with the sync row; the cached copy
+    /// has to go too, or re-adding the same topic would file the replayed messages as read.
+    func testDeleteTopicDropsTheWatermark() async throws {
+        try await store.upsert(makeMessage(id: "m1", time: 1_000), serverURL: "https://s.example")
+        try await store.markAllRead(serverURL: "https://s.example", topic: "alerts")
+        try await store.deleteTopic(serverURL: "https://s.example", topic: "alerts")
+
+        try await backfill(makeMessage(id: "m1", time: 1_000), serverURL: "https://s.example")
+
+        let unread = try await totalUnread()
+        XCTAssertEqual(unread, 1)
+    }
+
+    /// A message published in the second the topic was cleared is new, not backfill: the
+    /// watermark is for replays only, so a live delivery is never silently read.
+    func testLiveMessageIgnoresTheWatermark() async throws {
+        try await store.upsert(makeMessage(id: "m1", time: 1_000), serverURL: "https://s.example")
+        try await store.markAllRead(serverURL: "https://s.example", topic: "alerts")
+
+        try await store.upsert(makeMessage(id: "m2", time: 1_000), serverURL: "https://s.example")
+
+        let unread = try await totalUnread()
+        XCTAssertEqual(unread, 1)
+    }
+
+    /// An existing database keeps its old `sync_state` table, so the watermark column arrives
+    /// through an ALTER and reopening has to tolerate SQLite's "duplicate column name" answer
+    /// rather than fail to open.
+    func testReopeningADatabaseKeepsTheWatermark() async throws {
+        let path = NSTemporaryDirectory() + "ntfyx-watermark-\(UUID().uuidString).db"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let first = try MessageStore(dbPath: path)
+        try await first.upsert(makeMessage(id: "m1", time: 1_000), serverURL: "https://s.example")
+        try await first.upsert(makeMessage(id: "m2", time: 2_000), serverURL: "https://s.example")
+        try await first.markAllRead(serverURL: "https://s.example", topic: "alerts")
+
+        let second = try MessageStore(dbPath: path)
+        // A row the first store never saw: only the persisted watermark can make it read.
+        try await second.upsert(
+            makeMessage(id: "m3", time: 1_500), serverURL: "https://s.example", asBackfill: true
+        )
+
+        let unread = try await second.unreadCountsByTopic().values.reduce(0, +)
+        XCTAssertEqual(unread, 0)
+    }
+
     func testUnreadCountsByTopic() async throws {
         try await store.upsert(makeMessage(id: "m1"), serverURL: "https://s.example")
         try await store.upsert(makeMessage(id: "m2"), serverURL: "https://s.example")
@@ -194,7 +315,7 @@ final class MessageStoreTests: XCTestCase {
 
         let counts = try await store.unreadCountsByTopic()
         XCTAssertTrue(counts.isEmpty)
-        let total = try await store.totalUnreadCount()
+        let total = try await totalUnread()
         XCTAssertEqual(total, 0)
     }
 
@@ -268,7 +389,7 @@ final class MessageStoreTests: XCTestCase {
     /// "mark as read" — never "remove the message".
     func testClearEventMarksReadAndKeepsMessage() async throws {
         try await store.upsert(makeMessage(id: "m1", sequenceId: "seq-1"), serverURL: "https://s.example")
-        var unread = try await store.totalUnreadCount()
+        var unread = try await totalUnread()
         XCTAssertEqual(unread, 1)
 
         let affected = try await store.applyActionEvent(
@@ -281,7 +402,7 @@ final class MessageStoreTests: XCTestCase {
         XCTAssertEqual(messages.count, 1)
         XCTAssertTrue(messages[0].isRead)
         XCTAssertFalse(messages[0].isDeleted)
-        unread = try await store.totalUnreadCount()
+        unread = try await totalUnread()
         XCTAssertEqual(unread, 0)
     }
 
@@ -362,7 +483,7 @@ final class MessageStoreTests: XCTestCase {
             serverURL: "https://s.example"
         )
         XCTAssertFalse(onTombstone)
-        let unread = try await store.totalUnreadCount()
+        let unread = try await totalUnread()
         XCTAssertEqual(unread, 1)
     }
 
@@ -501,7 +622,7 @@ final class MessageStoreTests: XCTestCase {
         try await store.deleteTopic(serverURL: "https://a.example", topic: "alerts")
 
         let alertsCount = try await store.messageCount(serverURL: "https://a.example", topic: "alerts")
-        let unreadTotal = try await store.totalUnreadCount()
+        let unreadTotal = try await totalUnread()
         XCTAssertEqual(alertsCount, 0)
         XCTAssertEqual(unreadTotal, 1)  // only the kept topic counts now
         let info = try await store.latestSyncedInfo(serverURL: "https://a.example", topic: "alerts")
