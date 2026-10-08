@@ -1,54 +1,73 @@
 import XCTest
 @testable import ntfyx
 
-/// End-to-end tests for the history pipeline against the user's real ntfy server
-/// (ntfy.yufei.im — reachable through the system proxy, unlike ntfy.sh which rate-limits
-/// anonymous publishers with HTTP 429): publish → poll (since) → on-disk SQLite store →
-/// read/delete operations.
+/// End-to-end tests for the history pipeline: publish → poll (`since`) → on-disk SQLite store →
+/// read/delete operations, served by `FakeNtfyServer`'s cache table.
+///
+/// These ran against the deployed fork server until that stopped being viable: it retains every
+/// message forever, and a topic stays in `GET /v1/topics` as long as any of its rows survive —
+/// and a cleanup that deletes messages one by one *adds* rows. Every run left a permanent trail
+/// of test topics on the server.
 final class HistoryE2ETests: XCTestCase {
 
-    private static let serverURL = "https://ntfy.yufei.im"
+    private static let serverURL = FakeNtfyServer.baseURL
 
-    private func makeRandomTopic() -> String {
-        "ntfyx-hist-e2e-" + UUID().uuidString.prefix(8).lowercased()
+    private var server: FakeNtfyServer!
+    private var session: URLSession!
+    private var databases: [String] = []
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        server = FakeNtfyServer()
+        session = server.install()
     }
 
-    private static func publish(topic: String, title: String? = nil, body: String) async throws {
-        var request = URLRequest(url: URL(string: "\(serverURL)/\(topic)")!)
+    override func tearDown() {
+        server?.uninstall()
+        for path in databases { try? FileManager.default.removeItem(atPath: path) }
+        databases = []
+        session = nil
+        server = nil
+        super.tearDown()
+    }
+
+    /// A device: its own store on a throwaway database.
+    private func makeStore(_ name: String) throws -> MessageStore {
+        let path = NSTemporaryDirectory() + "hist-e2e-\(name)-\(UUID().uuidString).db"
+        databases.append(path)
+        return try MessageStore(dbPath: path)
+    }
+
+    private func topicRef(_ topic: String) -> TopicRef {
+        TopicRef(serverURL: Self.serverURL, topic: topic)
+    }
+
+    private func publish(
+        _ topic: String, title: String? = nil, body: String
+    ) async throws {
+        var request = URLRequest(url: URL(string: "\(Self.serverURL)/\(topic)")!)
         request.httpMethod = "POST"
         if let title {
             request.setValue(title, forHTTPHeaderField: "Title")
         }
         request.httpBody = body.data(using: .utf8)
-        let (_, response) = try await URLSession.shared.data(for: request)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if status == 429 {
-            // Publishing carries on through the asserts below when the server refuses, and the
-            // empty results then crash the whole runner, so bail out as a skip instead.
-            throw XCTSkip("server rate limited publishing (HTTP 429); rerun once the budget refills")
-        }
-        XCTAssertEqual(status, 200, "publish failed with HTTP \(status)")
+        let (_, response) = try await session.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200, "publish failed")
     }
 
     @MainActor
     func testPollStoreReadDeletePipeline() async throws {
-        let topic = makeRandomTopic()
-        let dbPath = NSTemporaryDirectory() + "hist-e2e-\(UUID().uuidString).db"
-        let store = try MessageStore(dbPath: dbPath)
-        defer { try? FileManager.default.removeItem(atPath: dbPath) }
+        let topic = "alerts"
+        let store = try makeStore("pipeline")
 
         // 1. Publish three messages
-        try await Self.publish(topic: topic, title: "First", body: "one")
-        try await Self.publish(topic: topic, title: "Second", body: "two")
-        try await Self.publish(topic: topic, title: "Third", body: "three")
-
-        // The server caches asynchronously — small settle delay
-        try await Task.sleep(nanoseconds: 1_500_000_000)
+        try await publish(topic, title: "First", body: "one")
+        try await publish(topic, title: "Second", body: "two")
+        try await publish(topic, title: "Third", body: "three")
 
         // 2. Full poll into the store
         let sync = HistorySyncService(store: store)
-        let ref = TopicRef(serverURL: Self.serverURL, topic: topic)
-        await sync.syncFull(ref)
+        await sync.syncFull(topicRef(topic))
 
         let stored = try await store.messages(serverURL: Self.serverURL, topic: topic)
         XCTAssertEqual(stored.count, 3, "expected 3 polled messages, got \(stored.count)")
@@ -59,9 +78,8 @@ final class HistoryE2ETests: XCTestCase {
         XCTAssertNotNil(syncInfo?.id)
 
         // 3. Publish one more and do an incremental sync — only the new one arrives
-        try await Self.publish(topic: topic, title: "Fourth", body: "four")
-        try await Task.sleep(nanoseconds: 1_500_000_000)
-        await sync.syncIncremental(ref)
+        try await publish(topic, title: "Fourth", body: "four")
+        await sync.syncIncremental(topicRef(topic))
 
         let afterIncremental = try await store.messages(serverURL: Self.serverURL, topic: topic)
         XCTAssertEqual(afterIncremental.count, 4, "incremental sync should only add the new message")
@@ -70,7 +88,7 @@ final class HistoryE2ETests: XCTestCase {
         // 4. Mark all read → unread count empty
         try await store.markAllRead(serverURL: Self.serverURL, topic: topic)
         let unread = try await store.unreadCountsByTopic()
-        XCTAssertNil(unread[ref])
+        XCTAssertNil(unread[topicRef(topic)])
 
         // 5. Mark one unread again, delete it locally + on server
         let target = afterIncremental[0]
@@ -83,27 +101,21 @@ final class HistoryE2ETests: XCTestCase {
         await MessageActionService.deleteOnServer(
             serverURL: Self.serverURL, topic: topic,
             sequenceID: target.message.sequenceId, messageID: target.message.id,
-            authToken: nil
+            authToken: nil, session: session
         )
 
         let remaining = try await store.messages(serverURL: Self.serverURL, topic: topic)
         XCTAssertEqual(remaining.count, 3)
         XCTAssertFalse(remaining.contains { $0.message.id == target.message.id })
 
-        // 6. Poll replay must not resurrect the deleted message
-        await sync.syncFull(ref)
+        // 6. Poll replay must not resurrect the deleted message. The server keeps both the
+        // message row and its delete event, so only the tombstone can hold it down.
+        await sync.syncFull(topicRef(topic))
         let afterReplay = try await store.messages(serverURL: Self.serverURL, topic: topic)
         XCTAssertFalse(afterReplay.contains { $0.message.id == target.message.id },
                        "tombstoned message must survive a full poll replay")
-
-        // Cleanup: delete remaining messages server-side (best effort)
-        for message in afterReplay {
-            await MessageActionService.deleteOnServer(
-                serverURL: Self.serverURL, topic: topic,
-                sequenceID: message.message.sequenceId, messageID: message.message.id,
-                authToken: nil
-            )
-        }
+        XCTAssertEqual(server.rows(topic: topic).filter { $0.event == "message" }.count, 4,
+                       "a server-side delete leaves the message cached")
     }
 
     /// A server-side `message_clear` must be applied as *read*, never as a delete, and a
@@ -111,18 +123,14 @@ final class HistoryE2ETests: XCTestCase {
     /// sync — the poll replays the event after its target message (ascending order).
     @MainActor
     func testServerMarkReadReplaysAsReadNotDelete() async throws {
-        let topic = makeRandomTopic()
-        let ref = TopicRef(serverURL: Self.serverURL, topic: topic)
+        let topic = "reads"
+        let ref = topicRef(topic)
 
-        try await Self.publish(topic: topic, title: "Alpha", body: "alpha")
-        try await Self.publish(topic: topic, title: "Beta", body: "beta")
-        try await Task.sleep(nanoseconds: 1_500_000_000)
+        try await publish(topic, title: "Alpha", body: "alpha")
+        try await publish(topic, title: "Beta", body: "beta")
 
         // Device A: sync, then mark one message read locally + on the server.
-        let pathA = NSTemporaryDirectory() + "hist-read-e2e-A-\(UUID().uuidString).db"
-        let storeA = try MessageStore(dbPath: pathA)
-        defer { try? FileManager.default.removeItem(atPath: pathA) }
-
+        let storeA = try makeStore("A")
         await HistorySyncService(store: storeA).syncFull(ref)
         let onA = try await storeA.messages(serverURL: Self.serverURL, topic: topic)
         XCTAssertEqual(onA.count, 2, "both published messages should be polled")
@@ -132,18 +140,12 @@ final class HistoryE2ETests: XCTestCase {
         let accepted = await MessageActionService.markReadOnServer(
             serverURL: Self.serverURL, topic: topic,
             sequenceID: target.message.sequenceId, messageID: target.message.id,
-            authToken: nil
+            authToken: nil, session: session
         )
         XCTAssertTrue(accepted, "server should accept GET /<topic>/<id>/read")
 
-        // The clear event has to land in the server cache before a second device replays it.
-        try await Task.sleep(nanoseconds: 1_500_000_000)
-
         // Device B: fresh store, first-ever sync.
-        let pathB = NSTemporaryDirectory() + "hist-read-e2e-B-\(UUID().uuidString).db"
-        let storeB = try MessageStore(dbPath: pathB)
-        defer { try? FileManager.default.removeItem(atPath: pathB) }
-
+        let storeB = try makeStore("B")
         await HistorySyncService(store: storeB).syncFull(ref)
         let onB = try await storeB.messages(serverURL: Self.serverURL, topic: topic)
         XCTAssertEqual(onB.count, 2, "message_clear must mark read, not delete")
@@ -151,30 +153,18 @@ final class HistoryE2ETests: XCTestCase {
                        "read state must come from the replayed message_clear event")
         XCTAssertEqual(onB.filter { $0.isRead }.count, 1)
         XCTAssertEqual(onB.filter { !$0.isRead }.count, 1)
-
-        // Cleanup (best effort)
-        for message in onB {
-            await MessageActionService.deleteOnServer(
-                serverURL: Self.serverURL, topic: topic,
-                sequenceID: message.message.sequenceId, messageID: message.message.id,
-                authToken: nil
-            )
-        }
     }
 
-    /// The batched `/read` route is a fork extension, so the comma-separated id list has to be
-    /// proven against the real server: one request, every device ends up read.
+    /// The batched `/read` route is a fork extension: one request for a comma-separated id
+    /// list, and every device converges from the resulting events.
     func testBatchedServerMarkReadConvergesOnSecondDevice() async throws {
-        let topic = makeRandomTopic()
-        let ref = TopicRef(serverURL: Self.serverURL, topic: topic)
+        let topic = "batched"
+        let ref = topicRef(topic)
         for i in 0..<3 {
-            try await Self.publish(topic: topic, title: "N\(i)", body: "body\(i)")
+            try await publish(topic, title: "N\(i)", body: "body\(i)")
         }
-        try await Task.sleep(nanoseconds: 1_500_000_000)
 
-        let pathA = NSTemporaryDirectory() + "hist-batch-A-\(UUID().uuidString).db"
-        let storeA = try MessageStore(dbPath: pathA)
-        defer { try? FileManager.default.removeItem(atPath: pathA) }
+        let storeA = try makeStore("batch-A")
         await HistorySyncService(store: storeA).syncFull(ref)
 
         let onA = try await storeA.messages(serverURL: Self.serverURL, topic: topic)
@@ -183,90 +173,84 @@ final class HistoryE2ETests: XCTestCase {
         let synced = await MessageActionService.markAllReadOnServer(
             serverURL: Self.serverURL, topic: topic,
             targets: onA.map { ($0.message.sequenceId, $0.message.id) },
-            authToken: nil
+            authToken: nil, session: session
         )
         XCTAssertEqual(synced, 3, "server should accept one /<topic>/<ids>/read request")
 
-        try await Task.sleep(nanoseconds: 1_500_000_000)
-
-        let pathB = NSTemporaryDirectory() + "hist-batch-B-\(UUID().uuidString).db"
-        let storeB = try MessageStore(dbPath: pathB)
-        defer { try? FileManager.default.removeItem(atPath: pathB) }
+        let storeB = try makeStore("batch-B")
         await HistorySyncService(store: storeB).syncFull(ref)
 
         let onB = try await storeB.messages(serverURL: Self.serverURL, topic: topic)
         XCTAssertEqual(onB.count, 3, "clear events must not delete the messages")
         XCTAssertTrue(onB.allSatisfy(\.isRead), "every replayed clear event should mark its message read")
-
-        for message in onB {
-            await MessageActionService.deleteOnServer(
-                serverURL: Self.serverURL, topic: topic,
-                sequenceID: message.message.sequenceId, messageID: message.message.id,
-                authToken: nil
-            )
-        }
     }
 
-    /// `/v1/topics` is what the subscribe sheet is built on: it lists the topic ids the server
-    /// still has cached messages for.
-    func testServerTopicListingIncludesPublishedTopic() async throws {
-        let topic = makeRandomTopic()
-        let ref = TopicRef(serverURL: Self.serverURL, topic: topic)
-        try await Self.publish(topic: topic, body: "discovery")
-        try await Task.sleep(nanoseconds: 1_500_000_000)
+    /// `/v1/topics` is what the subscribe sheet is built on: it lists every topic with a cached
+    /// row. That includes a topic whose messages were all deleted — the delete events are rows
+    /// too — which is exactly why a test run must not leave them behind on a real server.
+    func testServerTopicListingKeepsTopicUntilRetired() async throws {
+        let topic = "discovery"
+        let ref = topicRef(topic)
+        try await publish(topic, body: "discovery")
+        try await publish(topic, body: "second")
 
-        let topics = try await MessageActionService.fetchServerTopics(
-            serverURL: Self.serverURL, authToken: nil
+        var topics = try await MessageActionService.fetchServerTopics(
+            serverURL: Self.serverURL, authToken: nil, session: session
         )
         XCTAssertTrue(
             topics.contains(topic),
-            "/v1/topics should list \(topic); got \(topics.count) topic(s)"
+            "/v1/topics should list \(topic); got \(topics)"
         )
 
-        // Cleanup (best effort): a retired topic is gone from the listing, so drop the messages.
-        let path = NSTemporaryDirectory() + "hist-discovery-\(UUID().uuidString).db"
-        let store = try MessageStore(dbPath: path)
-        defer { try? FileManager.default.removeItem(atPath: path) }
+        let store = try makeStore("discovery")
         await HistorySyncService(store: store).syncFull(ref)
         let messages = try await store.messages(serverURL: Self.serverURL, topic: topic)
         await MessageActionService.deleteAllOnServer(
             serverURL: Self.serverURL, topic: topic,
             targets: messages.map { ($0.message.sequenceId, $0.message.id) },
-            authToken: nil
+            authToken: nil, session: session
         )
+
+        topics = try await MessageActionService.fetchServerTopics(
+            serverURL: Self.serverURL, authToken: nil, session: session
+        )
+        XCTAssertTrue(
+            topics.contains(topic),
+            "deleting every message leaves delete events behind, so the topic is still listed"
+        )
+
+        // Retiring purges the whole cache entry, listing included.
+        let purged = try await MessageActionService.retireTopic(
+            serverURL: Self.serverURL, topic: topic, authToken: nil, session: session
+        )
+        XCTAssertEqual(purged, 4, "both messages and both delete events are purged")
+        topics = try await MessageActionService.fetchServerTopics(
+            serverURL: Self.serverURL, authToken: nil, session: session
+        )
+        XCTAssertFalse(topics.contains(topic))
     }
 
     /// Retiring a topic is a single request that purges the whole server cache, which is what
     /// makes the messages vanish on every other device at once.
     func testRetireTopicPurgesServerCacheForOtherDevices() async throws {
-        let topic = makeRandomTopic()
-        let ref = TopicRef(serverURL: Self.serverURL, topic: topic)
+        let topic = "retire"
+        let ref = topicRef(topic)
         for i in 0..<2 {
-            try await Self.publish(topic: topic, title: "R\(i)", body: "body\(i)")
+            try await publish(topic, title: "R\(i)", body: "body\(i)")
         }
-        try await Task.sleep(nanoseconds: 1_500_000_000)
 
-        let path = NSTemporaryDirectory() + "hist-retire-\(UUID().uuidString).db"
-        let store = try MessageStore(dbPath: path)
-        defer { try? FileManager.default.removeItem(atPath: path) }
+        let store = try makeStore("retire")
         await HistorySyncService(store: store).syncFull(ref)
         let cached = try await store.messages(serverURL: Self.serverURL, topic: topic)
         XCTAssertEqual(cached.count, 2)
 
-        let deleted: Int
-        do {
-            deleted = try await MessageActionService.retireTopic(
-                serverURL: Self.serverURL, topic: topic, authToken: nil
-            )
-        } catch let error as TopicActionError {
-            throw XCTSkip("server does not allow retiring topics: \(error)")
-        }
-        XCTAssertGreaterThanOrEqual(deleted, 0)
+        let deleted = try await MessageActionService.retireTopic(
+            serverURL: Self.serverURL, topic: topic, authToken: nil, session: session
+        )
+        XCTAssertEqual(deleted, 2)
 
         // A brand new device must now see nothing at all.
-        let pathB = NSTemporaryDirectory() + "hist-retire-B-\(UUID().uuidString).db"
-        let storeB = try MessageStore(dbPath: pathB)
-        defer { try? FileManager.default.removeItem(atPath: pathB) }
+        let storeB = try makeStore("retire-B")
         await HistorySyncService(store: storeB).syncFull(ref)
         let onB = try await storeB.messages(serverURL: Self.serverURL, topic: topic)
         XCTAssertTrue(onB.isEmpty, "retired topic should leave no cached messages, got \(onB.count)")
