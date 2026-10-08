@@ -36,9 +36,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${BUILD}" Resources/Info.plist
 
       - name: Run tests
-        # HistoryE2ETests publishes to the user's own server, whose DNS resolves only
-        # through their local proxy, so a runner can never reach it.
-        run: swift test --skip HistoryE2ETests
+        run: swift test
       
       - name: Build and Sign app bundle
         run: |
