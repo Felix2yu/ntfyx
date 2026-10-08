@@ -42,6 +42,7 @@ final class HistoryE2ETests: XCTestCase {
         TopicRef(serverURL: Self.serverURL, topic: topic)
     }
 
+    @MainActor
     private func publish(
         _ topic: String, title: String? = nil, body: String
     ) async throws {
@@ -157,6 +158,7 @@ final class HistoryE2ETests: XCTestCase {
 
     /// The batched `/read` route is a fork extension: one request for a comma-separated id
     /// list, and every device converges from the resulting events.
+    @MainActor
     func testBatchedServerMarkReadConvergesOnSecondDevice() async throws {
         let topic = "batched"
         let ref = topicRef(topic)
@@ -188,6 +190,7 @@ final class HistoryE2ETests: XCTestCase {
     /// `/v1/topics` is what the subscribe sheet is built on: it lists every topic with a cached
     /// row. That includes a topic whose messages were all deleted — the delete events are rows
     /// too — which is exactly why a test run must not leave them behind on a real server.
+    @MainActor
     func testServerTopicListingKeepsTopicUntilRetired() async throws {
         let topic = "discovery"
         let ref = topicRef(topic)
@@ -232,6 +235,7 @@ final class HistoryE2ETests: XCTestCase {
 
     /// Retiring a topic is a single request that purges the whole server cache, which is what
     /// makes the messages vanish on every other device at once.
+    @MainActor
     func testRetireTopicPurgesServerCacheForOtherDevices() async throws {
         let topic = "retire"
         let ref = topicRef(topic)
