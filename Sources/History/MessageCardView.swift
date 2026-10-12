@@ -41,6 +41,8 @@ struct MessageCardView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
+        .contentShape(Rectangle())
+        .onTapGesture { markReadIfNeeded() }
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(stored.isRead ? Color.primary.opacity(0.03) : Color.accentColor.opacity(0.06))
@@ -80,6 +82,9 @@ struct MessageCardView: View {
                 .foregroundStyle(.tertiary)
                 .fixedSize()
         }
+        // Reserve room for the hover pill so the timestamp is never covered by it.
+        .padding(.trailing, isHovered ? 80 : 0)
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
     }
 
     private var fullTitle: String {
@@ -130,7 +135,7 @@ struct MessageCardView: View {
                         .lineLimit(expanded ? nil : 6)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
-                        .onTapGesture { if isExpandable { toggleExpanded() } }
+                        .onTapGesture { bodyTapped() }
                 } else {
                     Text(body)
                         .font(.system(size: messageFontSize))
@@ -138,7 +143,7 @@ struct MessageCardView: View {
                         .lineLimit(expanded ? nil : 6)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
-                        .onTapGesture { if isExpandable { toggleExpanded() } }
+                        .onTapGesture { bodyTapped() }
                 }
                 if isExpandable {
                     Button {
@@ -173,6 +178,17 @@ struct MessageCardView: View {
         withAnimation(.easeOut(duration: 0.15)) {
             expansionOverride = !expanded
         }
+    }
+
+    private func bodyTapped() {
+        markReadIfNeeded()
+        if isExpandable { toggleExpanded() }
+    }
+
+    /// Card-level tap marks an unread message as read; `onToggleRead` is a toggle,
+    /// so it must only fire when unread.
+    private func markReadIfNeeded() {
+        if !stored.isRead { onToggleRead() }
     }
 
     // MARK: - Click URL
