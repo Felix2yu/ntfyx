@@ -21,14 +21,17 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0")
+        .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.11.0")
     ],
     targets: [
         .target(
             name: "NtfyxCore",
-            dependencies: ["Yams"],
-            path: "Sources/NtfyxCore",
-            linkerSettings: [.linkedLibrary("sqlite3")]
+            dependencies: [
+                "Yams",
+                .product(name: "GRDB", package: "GRDB.swift")
+            ],
+            path: "Sources/NtfyxCore"
         ),
         .executableTarget(
             name: "ntfyx",
@@ -42,9 +45,12 @@ let package = Package(
         ),
         .testTarget(
             name: "ntfyxCoreTests",
-            dependencies: ["NtfyxCore", "Yams"],
-            path: "Tests/ntfyxCoreTests",
-            linkerSettings: [.linkedLibrary("sqlite3")]
+            dependencies: [
+                "NtfyxCore",
+                "Yams",
+                .product(name: "GRDB", package: "GRDB.swift")
+            ],
+            path: "Tests/ntfyxCoreTests"
         )
     ]
 )
