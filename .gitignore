@@ -20,6 +20,7 @@ xcuserdata/
 .vscode/
 .idea/
 .claude/
+.trae/
 
 # Build artifacts
 *.o
@@ -55,3 +56,7 @@ DerivedData/
 
 # openlore analysis artifacts
 .openlore/
+
+# architecture audit artifacts
+ntfyx-architecture-audit/
+.trae-html-share-packages/

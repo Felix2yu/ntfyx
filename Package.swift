@@ -10,22 +10,40 @@ let package = Package(
         .executable(
             name: "ntfyx",
             targets: ["ntfyx"]
+        ),
+        .executable(
+            name: "ntfyxctl",
+            targets: ["ntfyxctl"]
+        ),
+        .library(
+            name: "NtfyxCore",
+            targets: ["NtfyxCore"]
         )
     ],
     dependencies: [
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0")
     ],
     targets: [
-        .executableTarget(
-            name: "ntfyx",
+        .target(
+            name: "NtfyxCore",
             dependencies: ["Yams"],
-            path: "Sources",
+            path: "Sources/NtfyxCore",
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
+        .executableTarget(
+            name: "ntfyx",
+            dependencies: ["NtfyxCore"],
+            path: "Sources/ntfyx"
+        ),
+        .executableTarget(
+            name: "ntfyxctl",
+            dependencies: ["NtfyxCore"],
+            path: "Sources/ntfyxctl"
+        ),
         .testTarget(
-            name: "ntfyxTests",
-            dependencies: ["ntfyx", "Yams"],
-            path: "Tests/ntfyxTests",
+            name: "ntfyxCoreTests",
+            dependencies: ["NtfyxCore", "Yams"],
+            path: "Tests/ntfyxCoreTests",
             linkerSettings: [.linkedLibrary("sqlite3")]
         )
     ]

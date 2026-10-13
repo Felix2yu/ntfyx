@@ -3,8 +3,9 @@ set -e
 
 echo "Building ntfyx app bundle..."
 
-# Build the executable
-swift build -c release
+# Build the executable. `-disable-sandbox` is required for the @Observable macro
+# plugin when building under a restricted (sandboxed) SwiftPM environment.
+swift build -c release -Xswiftc -disable-sandbox
 
 # Create app bundle structure
 APP_NAME="ntfyx"
@@ -15,8 +16,10 @@ rm -rf "$BUILD_DIR/$APP_BUNDLE"
 mkdir -p "$BUILD_DIR/$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$BUILD_DIR/$APP_BUNDLE/Contents/Resources"
 
-# Copy executable
+# Copy executables. `ntfyx` is the menu-bar GUI (and `serve` daemon); `ntfyxctl` is the
+# auth/sync/init command line tool shipped alongside it inside the bundle.
 cp "$BUILD_DIR/$APP_NAME" "$BUILD_DIR/$APP_BUNDLE/Contents/MacOS/"
+cp "$BUILD_DIR/ntfyxctl" "$BUILD_DIR/$APP_BUNDLE/Contents/MacOS/"
 
 # Copy Info.plist
 cp "Resources/Info.plist" "$BUILD_DIR/$APP_BUNDLE/Contents/"
@@ -38,3 +41,6 @@ echo "  open $BUILD_DIR/$APP_BUNDLE"
 echo ""
 echo "To run as a background service (menu bar only, no Dock icon):"
 echo "  $BUILD_DIR/$APP_BUNDLE/Contents/MacOS/$APP_NAME serve"
+echo ""
+echo "The command line tool lives next to it:"
+echo "  $BUILD_DIR/$APP_BUNDLE/Contents/MacOS/ntfyxctl auth list"

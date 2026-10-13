@@ -64,7 +64,8 @@ cd ntfyx
 # 安装
 sudo cp -r .build/release/ntfyx.app /Applications/
 
-# 让 ntfyx 命令可用（可选）
+# 让命令行工具可用（可选）
+sudo ln -sf /Applications/ntfyx.app/Contents/MacOS/ntfyxctl /usr/local/bin/ntfyxctl
 sudo ln -sf /Applications/ntfyx.app/Contents/MacOS/ntfyx /usr/local/bin/ntfyx
 ```
 
@@ -86,10 +87,12 @@ sudo cp -r .build/release/ntfyx.app /Applications/
 1. **初始化配置**
 
 ```bash
-ntfyx init
+ntfyxctl init
 ```
 
 这会在 `~/.config/ntfyx/config.yml` 创建一份示例配置。
+
+> 命令拆成了两个可执行文件：`ntfyx` 负责菜单栏 GUI 和 `serve` 后台服务；`ntfyxctl` 负责 `init`、`auth`、`sync` 等纯命令行操作。下面文档中凡是配置类命令都以 `ntfyxctl` 开头。
 
 2. **编辑配置**
 
@@ -113,7 +116,7 @@ servers:
 3. **（可选）将认证令牌存入钥匙串**
 
 ```bash
-ntfyx auth add https://ntfy.sh tk_yourtoken
+ntfyxctl auth add https://ntfy.sh tk_yourtoken
 ```
 
 4. **启动服务**
@@ -254,13 +257,18 @@ servers:
 
 开关同步不会删除云端文件；换一台机器登录同一 iCloud 账户即自动接续。
 
-不想等 app 里的定时轮询，可以用命令行立刻合并一次，或先看看状态：`ntfyx sync status` / `pull` / `push`（见 [CLI 命令](#cli-命令)）。
+不想等 app 里的定时轮询，可以用命令行立刻合并一次，或先看看状态：`ntfyxctl sync status` / `pull` / `push`（见 [CLI 命令](#cli-命令)）。
 
 ### 安全须知
 
 云端那份文件里**包含服务器令牌，且是明文**。iCloud Drive 由 Apple 保管加密，但对你同步范围内的设备一律可见；不想让令牌离开本机的话，请保持本功能关闭，或用「设置 → iCloud 同步 → 选择…」指向一个自己控制的目录。本地写入的云端文件权限为 `0600`。
 
 ## CLI 命令
+
+命令分属两个可执行文件（都在 `ntfyx.app/Contents/MacOS/` 内）：
+
+- `ntfyx`：菜单栏应用本体，命令行为 `serve`（后台服务）和 `test-notify`
+- `ntfyxctl`：纯命令行工具，提供 `init`、`auth`、`sync`
 
 ### serve
 
@@ -276,13 +284,13 @@ ntfyx serve
 
 ```bash
 # 添加令牌
-ntfyx auth add <server-url> <token>
+ntfyxctl auth add <server-url> <token>
 
 # 列出所有已存储的令牌
-ntfyx auth list
+ntfyxctl auth list
 
 # 删除令牌
-ntfyx auth remove <server-url>
+ntfyxctl auth remove <server-url>
 ```
 
 钥匙串中的令牌优先于 YAML 配置文件中的令牌。
@@ -293,16 +301,16 @@ ntfyx auth remove <server-url>
 
 ```bash
 # 显示同步状态：是否开启、同步文件夹、云端文件、本机基线、上次同步时间
-ntfyx sync status
+ntfyxctl sync status
 
 # 取云端配置合并到本机，冲突以云端为准
-ntfyx sync pull
+ntfyxctl sync pull
 
 # 把本机配置合入云端，冲突以本机为准
-ntfyx sync push
+ntfyxctl sync push
 
 # 本次运行改用别的同步文件夹（不改动设置里的选择）
-ntfyx sync pull --dir /Volumes/nas/ntfyx
+ntfyxctl sync pull --dir /Volumes/nas/ntfyx
 ```
 
 `pull` 与 `push` 都会把合并结果同时写回本机文件和云端文件——只把一边推进而留下另一边，下一轮合并会把那一边更旧的状态读成「已删除」。两个命令的差别只在冲突时以哪边为准。
@@ -322,7 +330,7 @@ ntfyx test-notify --topic <NAME>
 创建示例配置文件：
 
 ```bash
-ntfyx init
+ntfyxctl init
 ```
 
 ### help
@@ -330,7 +338,8 @@ ntfyx init
 显示帮助信息：
 
 ```bash
-ntfyx help
+ntfyx help        # GUI / serve / test-notify
+ntfyxctl help     # init / auth / sync
 ```
 
 ## 脚本执行
@@ -437,13 +446,17 @@ servers:
 
 ### 使用方法
 
-发送 POST 请求即可触发通知：
+请求必须携带本机令牌（首次启动时自动生成，存于 `~/Library/Application Support/ntfyx/local-token`，权限 `0600`）。令牌即调用方身份证明：本地进程需以当前用户身份读取该文件，浏览器网页无法跨域附加 `Authorization` 头，因此无法伪造通知。
 
 ```bash
+TOKEN=$(cat "$HOME/Library/Application Support/ntfyx/local-token")
 curl -X POST http://127.0.0.1:9292/notify \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"title": "Build Complete", "message": "Project compiled successfully", "priority": 3, "tags": ["white_check_mark"]}'
 ```
+
+> 服务只绑定 IPv4 环回 `127.0.0.1`（外部网络无法访问）；无令牌或令牌错误的请求返回 `401 Unauthorized`。
 
 ### API
 
@@ -469,20 +482,25 @@ curl -X POST http://127.0.0.1:9292/notify \
 
 RESULT=$(deploy.sh "$NTFY_MESSAGE" 2>&1)
 EXIT_CODE=$?
+TOKEN=$(cat "$HOME/Library/Application Support/ntfyx/local-token")
 
 if [ $EXIT_CODE -eq 0 ]; then
   curl -s -X POST http://127.0.0.1:9292/notify \
+    -H "Authorization: Bearer $TOKEN" \
     -d "{\"title\": \"Deploy Success\", \"message\": \"$NTFY_MESSAGE deployed successfully\", \"tags\": [\"white_check_mark\"]}"
 else
   curl -s -X POST http://127.0.0.1:9292/notify \
+    -H "Authorization: Bearer $TOKEN" \
     -d "{\"title\": \"Deploy Failed\", \"message\": \"$RESULT\", \"priority\": 4, \"tags\": [\"x\"]}"
 fi
 ```
 
 ### 安全性
 
-- 仅绑定 `127.0.0.1`（外部网络无法访问）
-- 请求体最大 4 KB
+- 仅绑定 IPv4 环回地址 `127.0.0.1`（外部网络无法访问；注意 macOS 上绑定 `::1` 的监听器并不接受 IPv4 连接）
+- 每个 `POST /notify` 必须携带 `Authorization: Bearer <本机令牌>`；令牌为 256 位随机值，存于 `~/Library/Application Support/ntfyx/local-token`（`0600`），缺失或错误一律返回 `401`
+- 令牌要求挡住浏览器侧的表单/导航跨站请求（网页无法读取该文件，也无法跨域携带该头）
+- 请求体最大 4 KB，畸形请求行返回 `400`
 - 不执行任何代码——只触发通知
 - 默认禁用（需在配置中设置 `local_server_port`）
 - 可通过设置窗口配置（点击锁图标解锁编辑，输入端口号）
@@ -528,7 +546,7 @@ ntfy 支持在 `Tags` 字段中使用 [emoji 短代码](https://docs.ntfy.sh/emo
 
 ## 故障排查
 
-- **日志**：`~/.local/share/ntfyx/logs/ntfyx.log`
+- **日志**：`~/Library/Logs/ntfyx/ntfyx.log`（也可在 Console.app 中按子系统 `com.laurentftech.ntfyx` 查看统一日志）
 - **测试通知**：`ntfyx test-notify --topic test`
 - **连接问题**：核对服务器地址和令牌。
 - **脚本未执行**：确认脚本有执行权限（`chmod +x`）。
