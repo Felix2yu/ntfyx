@@ -87,6 +87,51 @@ enum HistoryDatabase {
             """)
         }
 
+        migrator.registerMigration("v2") { db in
+            // Full-text index over the three searchable columns (audit D1).
+            // External-content: the virtual table stores no text itself, only
+            // trigram index entries pointing at messages.rowid_pk. The trigram
+            // tokenizer (SQLite 3.34+) slides a 3-character window over each
+            // run, which is what makes CJK substring search work — unicode61
+            // would treat a space-less Chinese run as one unsplittable token.
+            // Trigram cannot index runs shorter than 3 characters, so queries
+            // of 1-2 characters stay on LIKE (see MessageStore.textSearch).
+            try db.execute(sql: """
+            CREATE VIRTUAL TABLE messages_fts USING fts5(
+                title, message, topic,
+                content='messages',
+                content_rowid='rowid_pk',
+                tokenize='trigram'
+            )
+            """)
+            try db.execute(sql: """
+            CREATE TRIGGER messages_fts_ai AFTER INSERT ON messages BEGIN
+                INSERT INTO messages_fts(rowid, title, message, topic)
+                VALUES (new.rowid_pk, new.title, new.message, new.topic);
+            END
+            """)
+            try db.execute(sql: """
+            CREATE TRIGGER messages_fts_ad AFTER DELETE ON messages BEGIN
+                INSERT INTO messages_fts(messages_fts, rowid, title, message, topic)
+                VALUES ('delete', old.rowid_pk, old.title, old.message, old.topic);
+            END
+            """)
+            // Defensive: title/message/topic are never updated today (upsert is
+            // INSERT OR IGNORE), but keep the index correct if that changes.
+            try db.execute(sql: """
+            CREATE TRIGGER messages_fts_au AFTER UPDATE OF title, message, topic ON messages BEGIN
+                INSERT INTO messages_fts(messages_fts, rowid, title, message, topic)
+                VALUES ('delete', old.rowid_pk, old.title, old.message, old.topic);
+                INSERT INTO messages_fts(rowid, title, message, topic)
+                VALUES (new.rowid_pk, new.title, new.message, new.topic);
+            END
+            """)
+            // One-shot backfill for libraries upgrading from v1; no-op on a
+            // fresh database. Idempotent: 'rebuild' always re-reads the content
+            // table from scratch.
+            try db.execute(sql: "INSERT INTO messages_fts(messages_fts) VALUES('rebuild')")
+        }
+
         return migrator
     }
 }

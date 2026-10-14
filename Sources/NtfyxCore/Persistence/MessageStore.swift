@@ -385,6 +385,36 @@ public actor MessageStore {
 
     // MARK: - Queries
 
+    /// How a user query filters the searchable text columns.
+    enum TextSearch: Equatable {
+        /// `LIKE '%…%'` with ESCAPE — the fallback path for inputs trigram
+        /// cannot index faithfully (short queries, punctuation, symbols).
+        case like(pattern: String)
+        /// FTS5 phrase MATCH against the trigram index.
+        case fts(match: String)
+    }
+
+    /// Routes a raw user query to FTS5 or LIKE.
+    ///
+    /// FTS only takes queries of ≥3 Characters made up entirely of letters/numbers:
+    /// trigram indexes 3-character windows inside letter/number runs, so anything
+    /// shorter has no index entry, and punctuation/symbols split token runs — a
+    /// query like `100%` would match `100x` through trigram (`100` is a window of
+    /// the run `100x`) where substring LIKE must not. CJK ideographs are letters,
+    /// so Chinese substring search goes through FTS.
+    /// Whitespace-only and other inputs stay on LIKE, preserving the old results.
+    static func textSearch(for query: String) -> TextSearch {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count >= 3,
+           trimmed.allSatisfy({ $0.isLetter || $0.isNumber }) {
+            // Phrase quoting makes every byte literal; doubled quotes escape a quote.
+            // (Defensive — the letter/number gate above already excludes them.)
+            let escaped = trimmed.replacingOccurrences(of: "\"", with: "\"\"")
+            return .fts(match: "\"\(escaped)\"")
+        }
+        return .like(pattern: likePattern(query))
+    }
+
     /// Fetches messages of a topic, newest first, with cursor pagination.
     /// - Parameters:
     ///   - limit: max rows to return.
@@ -398,6 +428,31 @@ public actor MessageStore {
         before: PageCursor? = nil,
         onlyUnread: Bool = false,
         searchText: String? = nil
+    ) throws -> [StoredMessage] {
+        let search = searchText.map(Self.textSearch(for:))
+        do {
+            return try fetchMessages(
+                serverURL: serverURL, topic: topic, limit: limit,
+                before: before, onlyUnread: onlyUnread, search: search
+            )
+        } catch {
+            // A malformed FTS query must never break search: retry on LIKE.
+            guard case .fts? = search else { throw error }
+            return try fetchMessages(
+                serverURL: serverURL, topic: topic, limit: limit,
+                before: before, onlyUnread: onlyUnread,
+                search: .like(pattern: Self.likePattern(searchText ?? ""))
+            )
+        }
+    }
+
+    private func fetchMessages(
+        serverURL: String,
+        topic: String,
+        limit: Int,
+        before: PageCursor?,
+        onlyUnread: Bool,
+        search: TextSearch?
     ) throws -> [StoredMessage] {
         var sql = """
         SELECT server_url, topic, msg_id, sequence_id, event, time, message, title, priority,
@@ -414,10 +469,15 @@ public actor MessageStore {
         if onlyUnread {
             sql += " AND is_read = 0"
         }
-        if let searchText, !searchText.isEmpty {
+        switch search {
+        case .none:
+            break
+        case .like(let pattern):
             sql += " AND (title LIKE ? ESCAPE '\\' OR message LIKE ? ESCAPE '\\')"
-            let pattern = Self.likePattern(searchText)
             bindings.append(contentsOf: [pattern, pattern])
+        case .fts(let match):
+            sql += " AND rowid_pk IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)"
+            bindings.append(match)
         }
         sql += " ORDER BY time DESC, rowid_pk DESC LIMIT ?"
         bindings.append(limit)
@@ -434,15 +494,34 @@ public actor MessageStore {
     ///   - limit: max rows to return.
     ///   - before: composite `(time, rowID)` cursor for "load older" (audit 2.3).
     func searchAll(query: String, limit: Int = 200, before: PageCursor? = nil) throws -> [StoredMessage] {
+        let search = Self.textSearch(for: query)
+        do {
+            return try fetchAll(limit: limit, before: before, search: search)
+        } catch {
+            guard case .fts = search else { throw error }
+            return try fetchAll(
+                limit: limit, before: before,
+                search: .like(pattern: Self.likePattern(query))
+            )
+        }
+    }
+
+    private func fetchAll(limit: Int, before: PageCursor?, search: TextSearch) throws -> [StoredMessage] {
         var sql = """
         SELECT server_url, topic, msg_id, sequence_id, event, time, message, title, priority,
                tags_json, click, actions_json, attachment_json, content_type, is_read, is_deleted, rowid_pk
         FROM messages
         WHERE is_deleted = 0
-          AND (title LIKE ? ESCAPE '\\' OR message LIKE ? ESCAPE '\\' OR topic LIKE ? ESCAPE '\\')
         """
-        let pattern = Self.likePattern(query)
-        var bindings: [DatabaseValueConvertible?] = [pattern, pattern, pattern]
+        var bindings: [DatabaseValueConvertible?] = []
+        switch search {
+        case .like(let pattern):
+            sql += " AND (title LIKE ? ESCAPE '\\' OR message LIKE ? ESCAPE '\\' OR topic LIKE ? ESCAPE '\\')"
+            bindings.append(contentsOf: [pattern, pattern, pattern])
+        case .fts(let match):
+            sql += " AND rowid_pk IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)"
+            bindings.append(match)
+        }
 
         if let before {
             sql += " AND (time < ? OR (time = ? AND rowid_pk < ?))"
