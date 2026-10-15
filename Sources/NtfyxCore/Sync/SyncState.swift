@@ -11,15 +11,32 @@ public struct SyncState: Codable, Equatable, Sendable {
 /// Sync timestamps are pinned to zh_CN so they read 年月日 时分 instead of turning into
 /// "Oct 4, 2026" on a Mac whose system locale is English, unlike the rest of the copy.
 public enum SyncTimeFormat {
-    private static let formatter: DateFormatter = {
+    private static let formatter: DateFormatter = make("yyyy年M月d日 HH:mm")
+    private static let timeFormatter: DateFormatter = make("HH:mm")
+    private static let monthDayFormatter: DateFormatter = make("M月d日 HH:mm")
+
+    private static func make(_ format: String) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "yyyy年M月d日 HH:mm"
+        formatter.dateFormat = format
         return formatter
-    }()
+    }
 
     public static func string(_ date: Date) -> String {
         formatter.string(from: date)
+    }
+
+    /// Short enough not to widen the menu bar menu: the year is implied for recent syncs and
+    /// the clock is implied for today. Callers keep `string(_:)` for the full timestamp.
+    public static func compactString(_ date: Date, now: Date = Date()) -> String {
+        let calendar = Calendar.current
+        if calendar.isDate(date, inSameDayAs: now) {
+            return timeFormatter.string(from: date)
+        }
+        if calendar.component(.year, from: date) == calendar.component(.year, from: now) {
+            return monthDayFormatter.string(from: date)
+        }
+        return formatter.string(from: date)
     }
 }
 

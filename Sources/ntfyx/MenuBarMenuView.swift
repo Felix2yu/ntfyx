@@ -80,70 +80,63 @@ struct MenuBarMenuView: View {
     private var statusRow: some View {
         let line = table.statusLine
         let paused = NotificationPause.shared.isPaused
-        return Button(action: {}) {
-            HStack(spacing: 6) {
-                statusDot(line.dot)
-                Text(line.text)
-                if paused {
-                    Text(" · 通知已暂停")
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
-        }
-        .disabled(true)
+        return Text(dotted(dotColor(line.dot), paused ? "\(line.text) · 通知已暂停" : line.text))
     }
 
     private func issueRow(_ issue: ConnectionRegistry.ConfigIssue) -> some View {
-        let isError: Bool
         let title: String
         let message: String
+        let color: Color
         switch issue {
         case .warning(let text):
-            isError = false; title = "⚠️ 配置警告"; message = text
+            title = "⚠️ 配置警告"; message = text; color = Color(nsColor: .systemOrange)
         case .error(let text):
-            isError = true; title = "⚠️ 配置错误"; message = text
+            title = "⚠️ 配置错误"; message = text; color = Color(nsColor: .systemRed)
         }
-        return Button(action: {}) {
-            HStack(spacing: 6) {
-                Text(title)
-                    .foregroundStyle(isError ? Color(nsColor: .systemRed) : Color(nsColor: .systemOrange))
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
-        }
-        .disabled(true)
-        .help(message)
+        return Text(tinted(title, color))
+            .help(message)
     }
 
-    @ViewBuilder
-    private func statusDot(_ dot: ConnectionRegistry.StatusLine.Dot) -> some View {
+    /// `MenuBarExtra(.menu)` converts labels into `NSMenuItem`s and an `HStack` label
+    /// collapses to its first child, so a row's text has to live in one attributed `Text`.
+    private func dotted(_ dot: Color?, _ text: String) -> AttributedString {
+        guard let dot else { return AttributedString(text) }
+        return tinted("● ", dot) + AttributedString(text)
+    }
+
+    private func tinted(_ text: String, _ color: Color) -> AttributedString {
+        var attributed = AttributedString(text)
+        attributed.foregroundColor = color
+        return attributed
+    }
+
+    private func dotColor(_ dot: ConnectionRegistry.StatusLine.Dot) -> Color? {
         switch dot {
-        case .none:
-            EmptyView()
-        case .green:
-            Text("●").foregroundStyle(Color(nsColor: .systemGreen))
-        case .red:
-            Text("●").foregroundStyle(Color(nsColor: .systemRed))
-        case .orangePulse:
-            Text("●")
-                .foregroundStyle(Color(nsColor: .systemOrange))
-                .opacity(table.pulseVisible ? 1 : 0)
+        case .none: nil
+        case .green: Color(nsColor: .systemGreen)
+        case .red: Color(nsColor: .systemRed)
+        case .orangePulse: pulseColor
         }
     }
 
-    @ViewBuilder
-    private func statusDot(_ state: ConnectionRegistry.ConnectionState) -> some View {
+    private func dotColor(_ state: ConnectionRegistry.ConnectionState) -> Color {
         switch state {
-        case .connected:
-            Text("●").foregroundStyle(Color(nsColor: .systemGreen))
-        case .disconnected:
-            Text("●").foregroundStyle(Color(nsColor: .systemRed))
-        case .connecting:
-            Text("●")
-                .foregroundStyle(Color(nsColor: .systemOrange))
-                .opacity(table.pulseVisible ? 1 : 0)
+        case .connected: Color(nsColor: .systemGreen)
+        case .disconnected: Color(nsColor: .systemRed)
+        case .connecting: pulseColor ?? Color.clear
+        }
+    }
+
+    /// The connecting dot blinks; while it is hidden the row keeps its indent with a clear run.
+    private var pulseColor: Color? {
+        table.pulseVisible ? Color(nsColor: .systemOrange) : .clear
+    }
+
+    private func stateText(_ state: ConnectionRegistry.ConnectionState) -> String {
+        switch state {
+        case .connected: "已连接"
+        case .disconnected: "已断开"
+        case .connecting: "连接中…"
         }
     }
 
@@ -153,56 +146,39 @@ struct MenuBarMenuView: View {
                 Text("未配置服务器")
             } else {
                 ForEach(table.sortedStatuses, id: \.url) { status in
-                    Menu {
-                        Button(status.url) {
-                            if let url = URL(string: status.url) {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }
-                        ForEach(status.topics, id: \.self) { topic in
-                            Text("    \(topic)")
+                    Button {
+                        if let url = URL(string: status.url) {
+                            NSWorkspace.shared.open(url)
                         }
                     } label: {
-                        HStack(spacing: 6) {
-                            statusDot(status.state)
-                            Text(status.url)
-                            Spacer(minLength: 0)
-                        }
+                        Text(dotted(dotColor(status.state), status.url))
                     }
-                    .help({
-                        switch status.state {
-                        case .connected: return "已连接\n主题：\(status.topics.joined(separator: ", "))"
-                        case .disconnected: return "已断开\n主题：\(status.topics.joined(separator: ", "))"
-                        case .connecting: return "连接中…\n主题：\(status.topics.joined(separator: ", "))"
-                        }
-                    }())
+                    .help("\(stateText(status.state))\n主题：\(status.topics.joined(separator: ", "))")
+
+                    ForEach(status.topics, id: \.self) { topic in
+                        Text("    \(topic)")
+                    }
                 }
             }
         }
     }
 
+    @ViewBuilder
     private var syncStatusRow: some View {
-        Button(action: {}) {
-            HStack(spacing: 0) {
-                switch sync.status {
-                case .off:
-                    Text("iCloud 同步：已关闭")
-                case .waiting:
-                    Text("iCloud 同步：等待首次同步")
-                case .syncing:
-                    Text("iCloud 同步：正在同步…")
-                case .synced(let date):
-                    Text("iCloud 同步：已于 \(SyncTimeFormat.string(date)) 同步")
-                case .failed(let message):
-                    Text("⚠️ iCloud 同步失败")
-                        .foregroundStyle(Color(nsColor: .systemOrange))
-                        .help(message)
-                }
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
+        switch sync.status {
+        case .off:
+            Text("iCloud 同步：已关闭")
+        case .waiting:
+            Text("iCloud 同步：等待首次同步")
+        case .syncing:
+            Text("iCloud 同步：正在同步…")
+        case .synced(let date):
+            Text("iCloud 同步：\(SyncTimeFormat.compactString(date))")
+                .help("上次同步：\(SyncTimeFormat.string(date))")
+        case .failed(let message):
+            Text(tinted("⚠️ iCloud 同步失败", Color(nsColor: .systemOrange)))
+                .help(message)
         }
-        .disabled(true)
     }
 
     private var pauseBinding: Binding<Bool> {
