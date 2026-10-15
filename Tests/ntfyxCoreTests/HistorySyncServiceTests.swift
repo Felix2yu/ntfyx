@@ -15,9 +15,11 @@ final class HistorySyncServiceTests: XCTestCase {
         var values: [String] = []
     }
 
-    private func makeMessage(id: String) -> NtfyMessage {
+    private func makeMessage(
+        id: String, time: Int = Int(Date().timeIntervalSince1970), event: String = "message"
+    ) -> NtfyMessage {
         NtfyMessage(
-            id: id, time: Int(Date().timeIntervalSince1970), event: "message", topic: "alerts",
+            id: id, time: time, event: event, topic: "alerts",
             message: "body", title: nil, priority: nil, tags: nil, click: nil, actions: nil,
             attachment: nil, contentType: nil, sequenceId: nil
         )
@@ -138,5 +140,71 @@ final class HistorySyncServiceTests: XCTestCase {
         await service.syncIncremental(ref)
         XCTAssertEqual(cursors.values.count, 2)
         XCTAssertEqual(cursors.values.last, "evt1", "the second open must not resume at the message")
+    }
+
+    /// A topic that was never polled still has live-delivered rows, and the server keeps months
+    /// of cache. Resuming at "now minus a window" would pull all of it back — including what the
+    /// user already read on another device — and file it as unread, so opening the topic
+    /// conjures unread messages out of nowhere. It has to resume at the newest local row.
+    func testNeverPolledTopicResumesAtItsNewestLocalRow() async throws {
+        let (service, store, ref) = try makeFixture()
+        let frontier = 1_700_000_500
+        try await store.upsert(makeMessage(id: "m1", time: frontier - 500), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "m2", time: frontier), serverURL: "https://s.example")
+        let cursors = CursorBox()
+        service.poll = { _, _, since, _, _ in
+            cursors.values.append(since)
+            return NtfyPollClient.PollResult()
+        }
+
+        await service.syncIncremental(ref)
+
+        XCTAssertEqual(cursors.values, [String(frontier)], "must not reach back past the newest local row")
+    }
+
+    /// Opening a topic must not conjure unread messages even when the server answers with
+    /// months of cache — an evicted `since=<id>` makes it replay the whole topic. Everything up
+    /// to the newest local row was already gone through; only what is past it is new here.
+    func testSyncFilesReplayedHistoryBelowTheLocalFrontierAsRead() async throws {
+        let (service, store, ref) = try makeFixture()
+        let local = makeMessage(id: "local", time: 1_700_000_500)
+        let older = makeMessage(id: "older", time: 1_700_000_100)
+        let newer = makeMessage(id: "newer", time: 1_700_000_900)
+        try await store.upsert(local, serverURL: "https://s.example")
+        try await store.markRead(
+            true, serverURL: "https://s.example", topic: "alerts", messageID: "local"
+        )
+        service.poll = { _, _, _, _, onEvents in
+            try await onEvents([older, local, newer])
+            var result = NtfyPollClient.PollResult()
+            result.messageCount = 3
+            result.newestEvent = newer
+            return result
+        }
+
+        await service.syncIncremental(ref)
+
+        let unread = try await store.unreadCountsByTopic()
+        XCTAssertEqual(unread[ref], 1, "only the message past the frontier counts unread")
+    }
+
+    /// A brand-new subscription has no frontier, so its first window really is all unread —
+    /// and it stays bounded instead of asking for the entire cache.
+    func testTopicWithoutLocalRowsStillUsesTheRecentWindow() async throws {
+        let (service, _, ref) = try makeFixture()
+        let cursors = CursorBox()
+        service.poll = { _, _, since, _, _ in
+            cursors.values.append(since)
+            return NtfyPollClient.PollResult()
+        }
+
+        await service.syncIncremental(ref)
+
+        let asked = Int(cursors.values.last ?? "") ?? -1
+        let expected = Int(Date().timeIntervalSince1970) - 90 * 24 * 3600
+        XCTAssertTrue(
+            abs(asked - expected) <= 2,
+            "a fresh subscription should ask for the 90-day window, got \(asked)"
+        )
     }
 }

@@ -344,6 +344,50 @@ final class MessageStoreTests: XCTestCase {
         XCTAssertEqual(otherCount, 1)
     }
 
+    /// The frontier is what a topic never polled before resumes from, so a tombstone still
+    /// counts: that row really was delivered here, and re-pulling the history behind it would
+    /// hand the user back messages they have already retired.
+    func testMaxStoredMessageTimeIsPerTopicAndCountsTombstones() async throws {
+        try await store.upsert(makeMessage(id: "m1", time: 1_700_000_100), serverURL: "https://s.example")
+        try await store.upsert(
+            makeMessage(id: "m2", topic: "other", time: 1_700_000_200), serverURL: "https://s.example"
+        )
+        try await store.tombstoneMessage(serverURL: "https://s.example", topic: "alerts", messageID: "m1")
+
+        let alerts = try await store.maxStoredMessageTime(serverURL: "https://s.example", topic: "alerts")
+        XCTAssertEqual(alerts, 1_700_000_100)
+        let unknown = try await store.maxStoredMessageTime(serverURL: "https://s.example", topic: "nothing")
+        XCTAssertNil(unknown)
+    }
+
+    /// A replay is history, not an inbox. Rows at or below where the device already stood come
+    /// in read — the snapshot is fixed, so same-second rows in one burst cannot be eaten
+    /// message by message the way a per-row `MAX(time)` would — and only what is genuinely
+    /// newer lands unread.
+    func testApplyBatchFilesRowsBelowTheSnapshotAsRead() async throws {
+        try await store.upsert(
+            makeMessage(id: "local", time: 1_700_000_500), serverURL: "https://s.example"
+        )
+        try await store.markRead(
+            true, serverURL: "https://s.example", topic: "alerts", messageID: "local"
+        )
+
+        _ = try await store.applyBatch([
+            makeMessage(id: "older", time: 1_700_000_100),
+            makeMessage(id: "same-second", time: 1_700_000_500),
+            makeMessage(id: "newer", time: 1_700_000_501),
+        ], serverURL: "https://s.example", readNotNewerThan: 1_700_000_500)
+
+        let readByMessageID = try await store
+            .messages(serverURL: "https://s.example", topic: "alerts")
+            .reduce(into: [String: Bool]()) { map, stored in map[stored.message.id] = stored.isRead }
+        XCTAssertEqual(readByMessageID["older"], true)
+        XCTAssertEqual(readByMessageID["same-second"], true)
+        XCTAssertEqual(readByMessageID["newer"], false)
+        let unread = try await totalUnread()
+        XCTAssertEqual(unread, 1, "only the row past the snapshot is unread")
+    }
+
     // MARK: - Delete events
 
     func testApplyDeleteEventBySequenceID() async throws {
