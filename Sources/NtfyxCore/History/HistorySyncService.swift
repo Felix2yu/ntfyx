@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// Orchestrates history synchronization between the server cache and the local store.
-/// - Auto incremental sync: `since=<last synced message id>` (falls back to timestamp,
+/// - Auto incremental sync: `since=<last synced event id>` (falls back to timestamp,
 ///   or a 90-day window on first sync) — triggered when a topic is opened.
 /// - Manual full sync: `since=all` — user-initiated, with progress reporting.
 /// Re-entrant calls for the same topic are ignored.
@@ -126,9 +126,10 @@ public final class HistorySyncService {
                 }
             )
 
-            // Advance sync state to the newest message seen. The server replays `since`
-            // in ascending time order, so action events land after their target message.
-            if let newest = result.newestMessage {
+            // Advance sync state past the newest event, action events included. `since=<id>` is
+            // exclusive, so a cursor that only counts messages leaves the clear/delete events
+            // behind it to be replayed on every topic open — re-marking messages already read.
+            if let newest = result.newestEvent {
                 try await store.setSyncedInfo(
                     serverURL: ref.serverURL, topic: ref.topic,
                     id: newest.id, time: newest.time

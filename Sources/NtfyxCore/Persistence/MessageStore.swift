@@ -164,19 +164,11 @@ public actor MessageStore {
     /// - Returns: true if a row was affected.
     @discardableResult
     func applyDeleteEvent(serverURL: String, topic: String, targetSequenceID: String?, targetMessageID: String?) throws -> Bool {
-        let sql = """
-        UPDATE messages
-        SET is_deleted = 1, deleted_at = ?
-        \(Self.actionTargetWhere)
-        """
-        return try db.inDatabase { db in
-            var arguments: [DatabaseValueConvertible?] = [Int(Date().timeIntervalSince1970)]
-            arguments.append(contentsOf: Self.actionTargetArguments(
-                serverURL: serverURL, topic: topic,
-                sequenceID: targetSequenceID, eventID: targetMessageID
-            ))
-            try db.execute(sql: sql, arguments: StatementArguments(arguments))
-            return db.changesCount > 0
+        try db.inDatabase { db in
+            try Self.applyDeleteRow(
+                db, serverURL: serverURL, topic: topic,
+                targetSequenceID: targetSequenceID, targetMessageID: targetMessageID
+            )
         }
     }
 
@@ -194,8 +186,11 @@ public actor MessageStore {
     func markAllRead(_ read: Bool = true, serverURL: String, topic: String) throws {
         try db.inDatabase { db in
             try db.execute(
-                sql: "UPDATE messages SET is_read = ? WHERE server_url = ? AND topic = ? AND is_deleted = 0",
-                arguments: [read ? 1 : 0, serverURL, topic]
+                sql: """
+                UPDATE messages SET is_read = ?
+                WHERE server_url = ? AND topic = ? AND is_deleted = 0 AND is_read != ?
+                """,
+                arguments: [read ? 1 : 0, serverURL, topic, read ? 1 : 0]
             )
         }
 
@@ -246,21 +241,11 @@ public actor MessageStore {
     /// - Returns: true if a row was affected.
     @discardableResult
     func applyReadEvent(serverURL: String, topic: String, targetSequenceID: String?, targetMessageID: String?) throws -> Bool {
-        let sql = """
-        UPDATE messages
-        SET is_read = 1
-        \(Self.actionTargetWhere)
-          AND is_deleted = 0
-        """
-        return try db.inDatabase { db in
-            try db.execute(
-                sql: sql,
-                arguments: StatementArguments(Self.actionTargetArguments(
-                    serverURL: serverURL, topic: topic,
-                    sequenceID: targetSequenceID, eventID: targetMessageID
-                ))
+        try db.inDatabase { db in
+            try Self.applyReadRow(
+                db, serverURL: serverURL, topic: topic,
+                targetSequenceID: targetSequenceID, targetMessageID: targetMessageID
             )
-            return db.changesCount > 0
         }
     }
 
@@ -705,33 +690,72 @@ public actor MessageStore {
         serverURL: String
     ) throws {
         if event.event == NtfyMessage.clearEvent {
-            try db.execute(
-                sql: """
-                UPDATE messages
-                SET is_read = 1
-                \(actionTargetWhere)
-                  AND is_deleted = 0
-                """,
-                arguments: StatementArguments(actionTargetArguments(
-                    serverURL: serverURL, topic: event.topic,
-                    sequenceID: event.sequenceId, eventID: event.id
-                ))
+            _ = try applyReadRow(
+                db, serverURL: serverURL, topic: event.topic,
+                targetSequenceID: event.sequenceId, targetMessageID: event.id
             )
         } else {
-            var arguments: [DatabaseValueConvertible?] = [Int(Date().timeIntervalSince1970)]
-            arguments.append(contentsOf: actionTargetArguments(
-                serverURL: serverURL, topic: event.topic,
-                sequenceID: event.sequenceId, eventID: event.id
-            ))
-            try db.execute(
-                sql: """
-                UPDATE messages
-                SET is_deleted = 1, deleted_at = ?
-                \(actionTargetWhere)
-                """,
-                arguments: StatementArguments(arguments)
+            _ = try applyDeleteRow(
+                db, serverURL: serverURL, topic: event.topic,
+                targetSequenceID: event.sequenceId, targetMessageID: event.id
             )
         }
+    }
+
+    /// Marks the row a `message_clear` event targets as read (SQL helper).
+    /// `is_read = 0` is what keeps a replayed event from re-marking a message the user already
+    /// read: `since=<id>` is exclusive, so the action events behind the cursor come back with
+    /// every poll, and an already-read row has to be left alone.
+    /// - Returns: true if a row was affected.
+    private static func applyReadRow(
+        _ db: Database,
+        serverURL: String,
+        topic: String,
+        targetSequenceID: String?,
+        targetMessageID: String?
+    ) throws -> Bool {
+        try db.execute(
+            sql: """
+            UPDATE messages
+            SET is_read = 1
+            \(actionTargetWhere)
+              AND is_deleted = 0
+              AND is_read = 0
+            """,
+            arguments: StatementArguments(actionTargetArguments(
+                serverURL: serverURL, topic: topic,
+                sequenceID: targetSequenceID, eventID: targetMessageID
+            ))
+        )
+        return db.changesCount > 0
+    }
+
+    /// Tombstones the row a `message_delete` event targets (SQL helper). Guarded on
+    /// `is_deleted = 0` like `applyReadRow`: re-applying a replayed event would also refresh
+    /// `deleted_at`, pushing the tombstone's expiry out every time it came back.
+    /// - Returns: true if a row was affected.
+    private static func applyDeleteRow(
+        _ db: Database,
+        serverURL: String,
+        topic: String,
+        targetSequenceID: String?,
+        targetMessageID: String?
+    ) throws -> Bool {
+        var arguments: [DatabaseValueConvertible?] = [Int(Date().timeIntervalSince1970)]
+        arguments.append(contentsOf: actionTargetArguments(
+            serverURL: serverURL, topic: topic,
+            sequenceID: targetSequenceID, eventID: targetMessageID
+        ))
+        try db.execute(
+            sql: """
+            UPDATE messages
+            SET is_deleted = 1, deleted_at = ?
+            \(actionTargetWhere)
+              AND is_deleted = 0
+            """,
+            arguments: StatementArguments(arguments)
+        )
+        return db.changesCount > 0
     }
 
     private static func storedMessage(from row: Row, serverURL: String, topic: String) throws -> StoredMessage {

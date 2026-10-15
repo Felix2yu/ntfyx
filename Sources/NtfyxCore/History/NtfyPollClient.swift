@@ -93,8 +93,8 @@ enum NtfyPollClient {
         var messageCount = 0
         /// Number of message_delete / message_clear events received.
         var actionEventCount = 0
-        /// The message with the highest `time` seen (used to advance sync state).
-        var newestMessage: NtfyMessage?
+        /// The newest event seen, message or action — what the `since` cursor advances to.
+        var newestEvent: NtfyMessage?
     }
 
     /// Streams the poll response and hands the replayed events over in batches. A full sync
@@ -162,16 +162,17 @@ enum NtfyPollClient {
             switch message.event {
             case "message":
                 result.messageCount += 1
-                if message.time >= (result.newestMessage?.time ?? .min) {
-                    result.newestMessage = message
-                }
-                batch.append(message)
             case NtfyMessage.deleteEvent, NtfyMessage.clearEvent:
                 result.actionEventCount += 1
-                batch.append(message)
             default:
                 continue  // open / keepalive / poll_request
             }
+            // Action events count too: they are cached rows like any message, so a cursor
+            // that stops at the newest message keeps replaying the events behind it.
+            if message.time >= (result.newestEvent?.time ?? .min) {
+                result.newestEvent = message
+            }
+            batch.append(message)
 
             if batch.count >= Self.eventBatchSize {
                 try await onEvents(batch)
