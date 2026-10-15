@@ -210,12 +210,252 @@ final class ScriptRunnerTests: XCTestCase {
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath.path)
 
         let env: [String: String] = [
+            "PATH": "/evil/path",
             "NTFY_TOPIC": "test",
         ]
         let result = runner.runScriptSynchronously(at: scriptPath.path, extraEnv: env)
 
         XCTAssertEqual(result.exitCode, 0)
-        // PATH should still contain the enhanced paths
+        // extraEnv must not be able to clobber the enhanced PATH
         XCTAssertTrue(result.output.contains("/opt/homebrew/bin"))
+        XCTAssertFalse(result.output.contains("/evil/path"))
+    }
+
+    // MARK: - ShellWord tokenizer
+
+    func testShellWordSplit() {
+        XCTAssertEqual(ShellWord.split("foo bar baz"), ["foo", "bar", "baz"])
+        XCTAssertEqual(ShellWord.split("foo 'bar baz' qux"), ["foo", "bar baz", "qux"])
+        XCTAssertEqual(ShellWord.split(#"foo "bar baz" qux"#), ["foo", "bar baz", "qux"])
+        XCTAssertEqual(ShellWord.split(#"foo\ bar"#), ["foo bar"])
+        XCTAssertEqual(ShellWord.split("  spaced  out "), ["spaced", "out"])
+        XCTAssertEqual(ShellWord.split(""), [])
+        XCTAssertNil(ShellWord.split("foo 'bar"))
+        XCTAssertNil(ShellWord.split(#"foo "bar"#))
+        XCTAssertNil(ShellWord.split("foo\\"))
+    }
+
+    func testShellWordJoinRoundTrip() {
+        let cases: [[String]] = [
+            ["foo", "bar"],
+            ["foo", "bar baz"],
+            ["a'b", "c\"d"],
+            ["$HOME", ";", "a;b", "`id`", "*", ""],
+            ["中文", "🔔"],
+        ]
+        for words in cases {
+            let joined = ShellWord.join(words)
+            XCTAssertEqual(ShellWord.split(joined), words, "round-trip failed for \(words) → \(joined)")
+        }
+        XCTAssertEqual(ShellWord.join(["simple", "words"]), "simple words")
+        XCTAssertEqual(ShellWord.join(["$HOME"]), "'$HOME'")
+    }
+
+    // MARK: - ScriptCommand construction
+
+    func testScriptCommandExplicitArgsBypassShell() {
+        let command = ScriptCommand.make(
+            spec: "/opt/bin/notify",
+            explicitArgs: ["$HOME", ";", "a;b", "`id`"],
+            messageArgument: "the body"
+        )
+        XCTAssertEqual(command?.executable, "/opt/bin/notify")
+        XCTAssertFalse(command?.shell ?? true)
+        XCTAssertEqual(command?.arguments, ["$HOME", ";", "a;b", "`id`", "the body"])
+    }
+
+    func testScriptCommandDirectExecForSafeSpec() {
+        let command = ScriptCommand.make(spec: "/usr/bin/printf '%s\\n'", messageArgument: nil)
+        XCTAssertEqual(command?.executable, "/usr/bin/printf")
+        XCTAssertFalse(command?.shell ?? true)
+        XCTAssertEqual(command?.arguments, ["%s\\n"])
+    }
+
+    func testScriptCommandFallsBackToShellForMetacharacters() {
+        for spec in [
+            "/bin/echo a | /usr/bin/cat",
+            "/bin/echo a; /bin/echo b",
+            "FOO=bar /opt/bin/run",
+            "/bin/echo $HOME",
+            "/bin/echo *.txt",
+        ] {
+            let command = ScriptCommand.make(spec: spec, messageArgument: nil)
+            XCTAssertEqual(command?.executable, ScriptCommand.shellPath, "expected shell for \(spec)")
+            XCTAssertTrue(command?.shell ?? false, "expected shell flag for \(spec)")
+            XCTAssertEqual(command?.arguments.first, "-c")
+        }
+    }
+
+    func testScriptCommandBareNameStaysShell() {
+        // Foundation Process does no PATH lookup; legacy `say hello` ran via /bin/sh.
+        let command = ScriptCommand.make(spec: "say hello", messageArgument: nil)
+        XCTAssertEqual(command?.executable, ScriptCommand.shellPath)
+        XCTAssertTrue(command?.shell ?? false)
+    }
+
+    func testScriptCommandQuotedPathDirectExec() {
+        let command = ScriptCommand.make(spec: "'/tmp/my scripts/run' --flag", messageArgument: nil)
+        XCTAssertEqual(command?.executable, "/tmp/my scripts/run")
+        XCTAssertFalse(command?.shell ?? true)
+        XCTAssertEqual(command?.arguments, ["--flag"])
+    }
+
+    // MARK: - Direct exec injection immunity
+
+    func testExplicitArgsArePassedLiterally() throws {
+        // argv-dumper: prints one bracketed line per argument.
+        let scriptPath = tempDir.appendingPathComponent("argv-dump.sh")
+        try """
+        #!/bin/bash
+        for a in "$@"; do echo "[$a]"; done
+        """.write(to: scriptPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath.path)
+
+        let hostileArgs = ["$HOME", ";", "a; rm -f /tmp/ntfyx-should-not-exist", "`id`", "$(whoami)", "'single'", "\"double\"", "*", "a b"]
+        let result = runner.runScriptSynchronously(at: scriptPath.path, arguments: hostileArgs)
+
+        XCTAssertEqual(result.exitCode, 0)
+        for arg in hostileArgs {
+            XCTAssertTrue(result.output.contains("[\(arg)]"), "missing literal argv line for \(arg) in\n\(result.output)")
+        }
+        // No shell word splitting: the space-containing arg is one line.
+        XCTAssertTrue(result.output.contains("[a b]"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: "/tmp/ntfyx-should-not-exist"))
+    }
+
+    func testExplicitArgsMessageAppendedLast() throws {
+        let scriptPath = tempDir.appendingPathComponent("argv-count.sh")
+        try """
+        #!/bin/bash
+        echo "count:$# first:$1 last:${!#}"
+        """.write(to: scriptPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath.path)
+        let result = runner.runScriptSynchronously(
+            at: scriptPath.path, arguments: ["first"], withArgument: "last-arg"
+        )
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("count:2"))
+        XCTAssertTrue(result.output.contains("first:first"))
+        XCTAssertTrue(result.output.contains("last:last-arg"))
+    }
+
+    // MARK: - Shell fallback keeps legacy behaviour
+
+    func testShellModeStillInterpretsPipeline() throws {
+        let result = Subprocess.runBlocking(
+            executable: ScriptCommand.shellPath,
+            arguments: ["-c", "/bin/echo hello | /usr/bin/tr a-z A-Z"],
+            environment: Subprocess.environment(extra: nil)
+        )
+        XCTAssertTrue(result.launched)
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.stdout.contains("HELLO"))
+    }
+
+    // MARK: - Timeout watchdog
+
+    func testTimeoutTerminatesProcess() {
+        let start = Date()
+        let result = Subprocess.runBlocking(
+            executable: "/bin/sleep",
+            arguments: ["30"],
+            environment: Subprocess.environment(extra: nil),
+            timeout: 0.5
+        )
+        let elapsed = Date().timeIntervalSince(start)
+
+        XCTAssertTrue(result.launched)
+        XCTAssertTrue(result.timedOut)
+        // A process still alive at the deadline would block waitUntilExit for 30 seconds.
+        XCTAssertLessThan(elapsed, 15, "watchdog did not reap the timed-out process")
+    }
+
+    func testTimeoutEscalatesToSIGKILL() throws {
+        // Ignores SIGTERM on purpose: only the 5-second SIGKILL escalation can reap it.
+        let scriptPath = tempDir.appendingPathComponent("ignore-term.sh")
+        try """
+        #!/bin/bash
+        trap '' TERM
+        sleep 30
+        """.write(to: scriptPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath.path)
+
+        let start = Date()
+        let result = Subprocess.runBlocking(
+            executable: scriptPath.path,
+            arguments: [],
+            environment: Subprocess.environment(extra: nil),
+            timeout: 0.5
+        )
+        let elapsed = Date().timeIntervalSince(start)
+
+        XCTAssertTrue(result.launched)
+        XCTAssertTrue(result.timedOut)
+        XCTAssertNotEqual(result.exitCode, 0)
+        // SIGTERM alone would leave it running for the remaining ~29 seconds.
+        XCTAssertGreaterThan(elapsed, 4)
+        XCTAssertLessThan(elapsed, 12)
+    }
+
+    func testTimeoutSIGTERMGracefulExit() throws {
+        let scriptPath = tempDir.appendingPathComponent("trap-term.sh")
+        try """
+        #!/bin/bash
+        trap 'exit 99' TERM
+        sleep 30
+        """.write(to: scriptPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath.path)
+
+        let start = Date()
+        let result = Subprocess.runBlocking(
+            executable: scriptPath.path,
+            arguments: [],
+            environment: Subprocess.environment(extra: nil),
+            timeout: 0.5
+        )
+        let elapsed = Date().timeIntervalSince(start)
+
+        XCTAssertTrue(result.timedOut)
+        XCTAssertEqual(result.exitCode, 99)
+        XCTAssertLessThan(elapsed, 4, "SIGTERM should have ended the process before the kill grace period")
+    }
+
+    func testNoTimeoutWhenProcessFinishes() {
+        let result = Subprocess.runBlocking(
+            executable: "/bin/sleep",
+            arguments: ["0"],
+            environment: Subprocess.environment(extra: nil),
+            timeout: 5
+        )
+        XCTAssertTrue(result.launched)
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertFalse(result.timedOut)
+    }
+
+    func testFailedLaunchReported() {
+        let result = Subprocess.runBlocking(
+            executable: "/nonexistent/binary-xyz",
+            arguments: [],
+            environment: Subprocess.environment(extra: nil)
+        )
+        XCTAssertFalse(result.launched)
+        XCTAssertFalse(result.timedOut)
+        XCTAssertEqual(result.exitCode, -1)
+    }
+
+    // MARK: - Validation
+
+    func testValidateScriptBareNameResolvedOnPATH() {
+        XCTAssertTrue(runner.validateScript(at: "echo"))
+        XCTAssertTrue(runner.validateScript(at: "echo with args"))
+        XCTAssertFalse(runner.validateScript(at: "definitely-not-a-real-command-xyz"))
+    }
+
+    func testValidateScriptQuotedFirstToken() throws {
+        let scriptURL = tempDir.appendingPathComponent("my script.sh")
+        try "#!/bin/bash\necho ok".write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        XCTAssertTrue(runner.validateScript(at: "'\(scriptURL.path)' --flag"))
     }
 }

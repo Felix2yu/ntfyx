@@ -7,14 +7,17 @@ public struct NotificationAction: Codable, Sendable {
     var url: String?      // for view actions
     var name: String?     // for shortcuts (the shortcut name)
     var script: String?   // for inline applescript
+    /// Structured argv for `script` actions; bypasses the shell entirely.
+    var args: [String]?
 
-    init(title: String, type: String, path: String? = nil, url: String? = nil, name: String? = nil, script: String? = nil) {
+    init(title: String, type: String, path: String? = nil, url: String? = nil, name: String? = nil, script: String? = nil, args: [String]? = nil) {
         self.title = title
         self.type = type
         self.path = path
         self.url = url
         self.name = name
         self.script = script
+        self.args = args
     }
 }
 
@@ -23,16 +26,19 @@ public struct TopicConfig: Codable, Sendable {
     let iconPath: String?
     let iconSymbol: String?
     let autoRunScript: String?
+    /// Structured argv for `autoRunScript`; when present the script bypasses the shell.
+    let autoRunScriptArgs: [String]?
     let silent: Bool?
     let clickUrl: ClickUrlConfig?  // Control click behavior: true/false/custom URL
     let actions: [NotificationAction]?
     let fetchMissed: Bool?
 
-    init(name: String, iconPath: String? = nil, iconSymbol: String? = nil, autoRunScript: String? = nil, silent: Bool? = nil, clickUrl: ClickUrlConfig? = nil, actions: [NotificationAction]? = nil, fetchMissed: Bool? = nil) {
+    init(name: String, iconPath: String? = nil, iconSymbol: String? = nil, autoRunScript: String? = nil, autoRunScriptArgs: [String]? = nil, silent: Bool? = nil, clickUrl: ClickUrlConfig? = nil, actions: [NotificationAction]? = nil, fetchMissed: Bool? = nil) {
         self.name = name
         self.iconPath = iconPath
         self.iconSymbol = iconSymbol
         self.autoRunScript = autoRunScript
+        self.autoRunScriptArgs = autoRunScriptArgs
         self.silent = silent
         self.clickUrl = clickUrl
         self.actions = actions
@@ -44,6 +50,7 @@ public struct TopicConfig: Codable, Sendable {
         case iconPath = "icon_path"
         case iconSymbol = "icon_symbol"
         case autoRunScript = "auto_run_script"
+        case autoRunScriptArgs = "auto_run_script_args"
         case silent
         case clickUrl = "click_url"
         case actions

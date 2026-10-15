@@ -59,17 +59,19 @@ struct EditableTopic: Identifiable {
     var iconPath: String?
     var iconSymbol: String?
     var autoRunScript: String?
+    var autoRunScriptArgs: [String]?
     var silent: Bool?
     var clickUrl: ClickUrlConfig?
     var actions: [NotificationAction]?
 
-    init(id: UUID = UUID(), name: String = "", fetchMissed: Bool? = nil, iconPath: String? = nil, iconSymbol: String? = nil, autoRunScript: String? = nil, silent: Bool? = nil, clickUrl: ClickUrlConfig? = nil, actions: [NotificationAction]? = nil) {
+    init(id: UUID = UUID(), name: String = "", fetchMissed: Bool? = nil, iconPath: String? = nil, iconSymbol: String? = nil, autoRunScript: String? = nil, autoRunScriptArgs: [String]? = nil, silent: Bool? = nil, clickUrl: ClickUrlConfig? = nil, actions: [NotificationAction]? = nil) {
         self.id = id
         self.name = name
         self.fetchMissed = fetchMissed
         self.iconPath = iconPath
         self.iconSymbol = iconSymbol
         self.autoRunScript = autoRunScript
+        self.autoRunScriptArgs = autoRunScriptArgs
         self.silent = silent
         self.clickUrl = clickUrl
         self.actions = actions
@@ -202,6 +204,7 @@ final class SettingsViewModel {
                         iconPath: topic.iconPath,
                         iconSymbol: topic.iconSymbol,
                         autoRunScript: topic.autoRunScript,
+                        autoRunScriptArgs: topic.autoRunScriptArgs,
                         silent: topic.silent,
                         clickUrl: topic.clickUrl,
                         actions: topic.actions
@@ -259,6 +262,7 @@ final class SettingsViewModel {
                     iconPath: topic.iconPath,
                     iconSymbol: topic.iconSymbol,
                     autoRunScript: topic.autoRunScript,
+                    autoRunScriptArgs: topic.autoRunScriptArgs,
                     silent: topic.silent,
                     clickUrl: topic.clickUrl,
                     actions: topic.actions,

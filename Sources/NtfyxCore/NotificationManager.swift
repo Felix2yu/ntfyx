@@ -772,7 +772,13 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         if let configAction = matchingAction {
             if configAction.type == "script", let path = configAction.path {
                 Log.info("Executing action script: \(path)")
-                scriptRunner?.runScript(at: path, withArgument: action.messageBody, extraEnv: nil)
+                scriptRunner?.runScript(
+                    at: path,
+                    arguments: configAction.args,
+                    withArgument: action.messageBody,
+                    extraEnv: nil,
+                    timeout: Subprocess.defaultTimeout
+                )
             } else if configAction.type == "view", let urlString = configAction.url, let url = URL(string: urlString) {
                 Log.info("Opening URL from config action: \(urlString)")
                 openUrlSecurely(url, serverBaseURL: serverBaseURL)

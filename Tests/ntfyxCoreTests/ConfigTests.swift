@@ -124,6 +124,44 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(topic.actions?[1].url, "https://example.com")
     }
 
+    func testStructuredScriptArgsDecodingAndRoundTrip() throws {
+        let yaml = """
+        name: test
+        auto_run_script: /opt/bin/notify
+        auto_run_script_args:
+          - --topic
+          - spaced arg
+        actions:
+          - title: Run
+            type: script
+            path: /opt/bin/action
+            args:
+              - --severity
+              - high
+        """
+        let decoder = YAMLDecoder()
+        let topic = try decoder.decode(TopicConfig.self, from: yaml)
+
+        XCTAssertEqual(topic.autoRunScript, "/opt/bin/notify")
+        XCTAssertEqual(topic.autoRunScriptArgs, ["--topic", "spaced arg"])
+        XCTAssertEqual(topic.actions?[0].args, ["--severity", "high"])
+
+        // Round-trip through the encoder the settings UI uses.
+        let encoded = try YAMLEncoder().encode(topic)
+        let decoded = try YAMLDecoder().decode(TopicConfig.self, from: encoded)
+        XCTAssertEqual(decoded.autoRunScriptArgs, ["--topic", "spaced arg"])
+        XCTAssertEqual(decoded.actions?[0].args, ["--severity", "high"])
+    }
+
+    func testStructuredScriptArgsAbsentByDefault() throws {
+        let yaml = """
+        name: test
+        auto_run_script: /opt/bin/notify
+        """
+        let topic = try YAMLDecoder().decode(TopicConfig.self, from: yaml)
+        XCTAssertNil(topic.autoRunScriptArgs)
+    }
+
     // MARK: - Per-Server AllowedSchemes Tests
 
     func testServerAllowedSchemesDefaultsToHttpAndHttps() throws {

@@ -171,12 +171,17 @@ struct TopicSettingsView: View {
             Divider()
 
             LabeledContent("自动运行脚本") {
-                pathRow(
-                    prompt: "脚本文件",
-                    text: textBinding(\.autoRunScript),
-                    onPick: { topic.autoRunScript = pickFile() }
-                )
-                .help("每条消息到达时执行的脚本")
+                VStack(alignment: .leading, spacing: 4) {
+                    pathRow(
+                        prompt: "脚本文件",
+                        text: textBinding(\.autoRunScript),
+                        onPick: { topic.autoRunScript = pickFile() }
+                    )
+                    TextField("参数（可选；空格分隔，含空格用引号）", text: autoRunScriptArgsBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 340)
+                }
+                .help("每条消息到达时执行的脚本；参数以 argv 直传，消息体附加为最后一个参数")
             }
 
             Divider()
@@ -294,6 +299,14 @@ struct TopicSettingsView: View {
         )
     }
 
+    /// One text field ↔ structured argv, using POSIX quoting on the way back.
+    private var autoRunScriptArgsBinding: Binding<String> {
+        shellArgsBinding(
+            get: { topic.autoRunScriptArgs },
+            set: { topic.autoRunScriptArgs = $0 }
+        )
+    }
+
     @ViewBuilder
     private func pathRow(prompt: String, text: Binding<String>, onPick: @escaping () -> Void) -> some View {
         HStack(spacing: 6) {
@@ -312,6 +325,26 @@ struct TopicSettingsView: View {
         panel.allowsMultipleSelection = false
         return panel.runModal() == .OK ? panel.url?.path : nil
     }
+}
+
+/// One text field ↔ structured argv, using POSIX quoting for display.
+@MainActor
+private func shellArgsBinding(
+    get: @escaping () -> [String]?,
+    set: @escaping ([String]?) -> Void
+) -> Binding<String> {
+    Binding(
+        get: { get().map { ShellWord.join($0) } ?? "" },
+        set: { text in
+            let trimmed = text.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else {
+                set(nil)
+                return
+            }
+            // Unmatched quotes are kept literally: the user is probably mid-typing.
+            set(ShellWord.split(trimmed) ?? [trimmed])
+        }
+    )
 }
 
 // MARK: - Single action editor
@@ -354,7 +387,11 @@ private struct ActionEditorRow: View {
                 TextField("https://…", text: field(\.url))
                     .textFieldStyle(.roundedBorder)
             case "script":
-                pathField("脚本文件", key: \.path)
+                VStack(alignment: .leading, spacing: 4) {
+                    pathField("脚本文件", key: \.path)
+                    TextField("参数（可选；空格分隔，含空格用引号）", text: actionArgsBinding)
+                        .textFieldStyle(.roundedBorder)
+                }
             case "applescript":
                 // `path` runs a .scpt file; `script` is inline source.
                 VStack(alignment: .leading, spacing: 4) {
@@ -374,13 +411,20 @@ private struct ActionEditorRow: View {
         .onChange(of: action.type) { _, newValue in
             // Drop fields that don't belong to the newly chosen type.
             switch newValue {
-            case "view": action.path = nil; action.name = nil; action.script = nil
+            case "view": action.path = nil; action.name = nil; action.script = nil; action.args = nil
             case "script": action.url = nil; action.name = nil; action.script = nil
-            case "applescript": action.url = nil; action.name = nil
-            case "shortcut": action.url = nil; action.path = nil; action.script = nil
+            case "applescript": action.url = nil; action.name = nil; action.args = nil
+            case "shortcut": action.url = nil; action.path = nil; action.script = nil; action.args = nil
             default: break
             }
         }
+    }
+
+    private var actionArgsBinding: Binding<String> {
+        shellArgsBinding(
+            get: { action.args },
+            set: { action.args = $0 }
+        )
     }
 
     private func field(_ keyPath: WritableKeyPath<NotificationAction, String?>) -> Binding<String> {

@@ -519,7 +519,7 @@ public final class Ntfyx {
 
         // Handle auto-run scripts
         if let autoRunScript = topicConfig?.autoRunScript, scriptRunner.validateScript(at: autoRunScript) {
-            runAutoRunScript(for: message, scriptPath: autoRunScript)
+            runAutoRunScript(for: message, scriptPath: autoRunScript, arguments: topicConfig?.autoRunScriptArgs)
         }
 
         // Show notification (respects silent flag)
@@ -555,21 +555,23 @@ public final class Ntfyx {
         // validated and spawned off-main — thousands of path checks would otherwise stall
         // the main actor again.
         let runner = scriptRunner
-        var scriptByTopic: [String: String] = [:]
+        // topic → (script spec, structured argv)
+        var scriptByTopic: [String: (String, [String]?)] = [:]
         for topic in topicNames {
-            if let path = configStore.topicConfig(serverURL: serverURL, topic: topic)?.autoRunScript {
-                scriptByTopic[topic] = path
+            if let topicConfig = configStore.topicConfig(serverURL: serverURL, topic: topic),
+               let path = topicConfig.autoRunScript {
+                scriptByTopic[topic] = (path, topicConfig.autoRunScriptArgs)
             }
         }
-        let scripts = batch.compactMap { message -> (String, NtfyMessage)? in
-            guard let path = scriptByTopic[message.topic] else { return nil }
-            return (path, message)
+        let scripts = batch.compactMap { message -> (String, [String]?, NtfyMessage)? in
+            guard let (path, args) = scriptByTopic[message.topic] else { return nil }
+            return (path, args, message)
         }
 
         Task.detached(priority: .utility) { [weak self] in
             let revoked = (try? await store.applyBatch(batch, serverURL: serverURL)) ?? []
-            for (path, message) in scripts where runner.validateScript(at: path) {
-                self?.runAutoRunScript(for: message, scriptPath: path)
+            for (path, args, message) in scripts where runner.validateScript(at: path) {
+                self?.runAutoRunScript(for: message, scriptPath: path, arguments: args)
             }
             await MainActor.run {
                 if !revoked.isEmpty {
@@ -587,7 +589,9 @@ public final class Ntfyx {
     ///
     /// Nonisolated on purpose: it only reads value-type message fields and the stateless,
     /// Sendable script runner, so it can run straight from the background batch task.
-    nonisolated private func runAutoRunScript(for message: NtfyMessage, scriptPath path: String) {
+    nonisolated private func runAutoRunScript(
+        for message: NtfyMessage, scriptPath path: String, arguments: [String]?
+    ) {
         Log.info("Auto-running script: \(path)")
         // Pass message context as environment variables
         var env: [String: String] = [
@@ -601,7 +605,7 @@ public final class Ntfyx {
         if let priority = message.priority { env["NTFY_PRIORITY"] = String(priority) }
         if let tags = message.tags { env["NTFY_TAGS"] = tags.joined(separator: ",") }
         if let click = message.click { env["NTFY_CLICK"] = click }
-        scriptRunner.runScript(at: path, withArgument: message.message, extraEnv: env)
+        scriptRunner.runScript(at: path, arguments: arguments, withArgument: message.message, extraEnv: env, timeout: Subprocess.defaultTimeout)
     }
 
     /// Restarts the settle timer: banners are held until the replay stops arriving, then

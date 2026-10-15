@@ -170,6 +170,7 @@ public enum ConfigSyncTranslator {
             iconPath: existing?.iconPath,
             iconSymbol: sync.iconSymbol,
             autoRunScript: existing?.autoRunScript,
+            autoRunScriptArgs: existing?.autoRunScriptArgs,
             silent: sync.silent,
             clickUrl: sync.clickUrl,
             actions: existing?.actions,
