@@ -2,7 +2,8 @@ import XCTest
 import GRDB
 @testable import NtfyxCore
 
-/// PR7: FTS5 trigram full-text search, LIKE fallback, and v1→v2 migration.
+/// FTS5 trigram search via a single route (column-level LIKE over messages_fts),
+/// literal metacharacter handling, performance, and the v1→v2 migration.
 final class MessageStoreFTSTests: XCTestCase {
     private var store: MessageStore!
 
@@ -29,33 +30,112 @@ final class MessageStoreFTSTests: XCTestCase {
         )
     }
 
-    // MARK: - Routing
+    // MARK: - Single-route semantics (column-level LIKE over messages_fts)
 
-    func testTextSearchRouting() {
-        XCTAssertEqual(MessageStore.textSearch(for: "通知中心"), .fts(match: "\"通知中心\""))
-        XCTAssertEqual(MessageStore.textSearch(for: "deploy"), .fts(match: "\"deploy\""))
-        XCTAssertEqual(MessageStore.textSearch(for: "abc123"), .fts(match: "\"abc123\""))
+    /// One- and two-character terms have no trigram windows, so they cannot seek the
+    /// index — but they must still match exactly via the virtual-table LIKE filter.
+    func testOneAndTwoCharacterTermsStayExact() async throws {
+        try await store.upsert(
+            makeMessage(id: "m1", title: "告警标题文字", message: "磁盘 ab 余量"),
+            serverURL: "https://s.example"
+        )
 
-        // 1–2 Characters: trigram has no windows → LIKE.
-        guard case .like = MessageStore.textSearch(for: "告警") else {
-            return XCTFail("2-character CJK query must stay on LIKE")
+        let cjk = try await store.searchAll(query: "告警").map { $0.message.id }
+        XCTAssertEqual(cjk, ["m1"])
+        let latin = try await store.searchAll(query: "ab").map { $0.message.id }
+        XCTAssertEqual(latin, ["m1"])
+        // Single CJK ideograph.
+        let ideograph = try await store.searchAll(query: "磁").map { $0.message.id }
+        XCTAssertEqual(ideograph, ["m1"])
+        // No false positives for absent short terms.
+        let absentLatin = try await store.searchAll(query: "xy")
+        XCTAssertTrue(absentLatin.isEmpty)
+        let absentCJK = try await store.searchAll(query: "晴")
+        XCTAssertTrue(absentCJK.isEmpty)
+    }
+
+    /// Punctuation-only windows and exact symbols must behave like plain substring
+    /// matching: `100%` must not hit `100x`, an underscore is a literal underscore,
+    /// and a backslash is a literal backslash.
+    func testPunctuationAndLikeMetacharactersAreLiteral() async throws {
+        try await store.upsert(
+            makeMessage(id: "percent", title: "100% done", message: "进度 100x 完成"),
+            serverURL: "https://s.example"
+        )
+        try await store.upsert(
+            makeMessage(id: "underscore", topic: "build_jobs", title: "zzz", message: "yyy"),
+            serverURL: "https://s.example"
+        )
+        try await store.upsert(
+            makeMessage(id: "underscoreLookalike", topic: "buildxjobs", title: "qqq", message: "www"),
+            serverURL: "https://s.example"
+        )
+        try await store.upsert(
+            makeMessage(id: "backslash", title: "路径 C:\\Temp 目录", message: "rrr"),
+            serverURL: "https://s.example"
+        )
+
+        // `%` must not act as a wildcard: matches "100% done", not "100x".
+        let percentHits = try await store.searchAll(query: "100%").map { $0.message.id }
+        XCTAssertEqual(percentHits, ["percent"])
+        // `_` must not match a single arbitrary character.
+        let underscoreHits = try await store.searchAll(query: "build_jobs").map { $0.message.id }
+        XCTAssertEqual(underscoreHits, ["underscore"])
+        // Literal backslash content is searchable (escaping must not corrupt it).
+        let backslashHits = try await store.searchAll(query: #"C:\Temp"#).map { $0.message.id }
+        XCTAssertEqual(backslashHits, ["backslash"])
+        // Dotted/punctuated versions still match only the literal occurrence.
+        let dotted = try await store.searchAll(query: "v2.1.1")
+        XCTAssertTrue(dotted.isEmpty)
+        let plainHits = try await store.searchAll(query: "100x").map { $0.message.id }
+        XCTAssertEqual(plainHits, ["percent"])
+    }
+
+    /// EXPLAIN QUERY PLAN pins the routing: a query without LIKE metacharacters must be
+    /// served by per-column trigram index seeks (never a `messages` base-table scan),
+    /// while a query requiring ESCAPE scans the FTS virtual table itself.
+    func testExplainQueryPlanPinsTrigramRouting() async throws {
+        let (fileStore, path, directory) = try makeFileStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try await fileStore.upsert(
+            makeMessage(id: "m1", title: "zephyrmarker", message: "x"),
+            serverURL: "https://s.example"
+        )
+        let reader = try DatabaseQueue(path: path)
+        defer { try? reader.close() }
+
+        func plan(for query: String) throws -> String {
+            // Build the exact production filter, then run its inner predicate against
+            // EXPLAIN QUERY PLAN (the fragment is shaped for the outer `messages` query).
+            let columns = ["title", "message", "topic"]
+            let filter = MessageStore.ftsTextFilter(columns: columns, query: query)
+            let comparator = filter.sql.contains("ESCAPE") ? "LIKE ? ESCAPE '\\'" : "LIKE ?"
+            let whereClause = columns.map { "\($0) \(comparator)" }.joined(separator: " OR ")
+            return try reader.inDatabase { db in
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: "EXPLAIN QUERY PLAN SELECT rowid FROM messages_fts WHERE \(whereClause)",
+                    arguments: [filter.pattern, filter.pattern, filter.pattern]
+                )
+                return rows.map { ($0["detail"] as String?) ?? "" }.joined(separator: " | ")
+            }
         }
-        guard case .like = MessageStore.textSearch(for: "ab") else {
-            return XCTFail("2-character query must stay on LIKE")
-        }
-        // Punctuation/symbols split trigram runs ('100%' must not match '100x') → LIKE.
-        guard case .like = MessageStore.textSearch(for: "100%") else {
-            return XCTFail("punctuation query must stay on LIKE")
-        }
-        guard case .like = MessageStore.textSearch(for: "v2.1.1") else {
-            return XCTFail("punctuation query must stay on LIKE")
-        }
-        guard case .like = MessageStore.textSearch(for: "a b") else {
-            return XCTFail("whitespace query must stay on LIKE")
-        }
-        guard case .like = MessageStore.textSearch(for: "🎉🎉🎉") else {
-            return XCTFail("emoji query must stay on LIKE")
-        }
+
+        let accelerated = try plan(for: "zephyrmarker")
+        XCTAssertTrue(
+            accelerated.contains("MULTI-INDEX OR") && accelerated.contains("messages_fts"),
+            "≥3-char metacharacter-free query expected per-column trigram index seeks, got: \(accelerated)"
+        )
+        XCTAssertFalse(
+            accelerated.contains(" SCAN messages "),
+            "search must never scan the base messages table: \(accelerated)"
+        )
+
+        let escaped = try plan(for: "100%")
+        XCTAssertTrue(
+            escaped.contains("messages_fts") && !escaped.contains(" SCAN messages "),
+            "ESCAPE variant scans the FTS table, not the base table: \(escaped)"
+        )
     }
 
     // MARK: - FTS hits (Chinese + English, all three columns)
@@ -132,17 +212,17 @@ final class MessageStoreFTSTests: XCTestCase {
 
         let percent = try await store.searchAll(query: "100%")
         XCTAssertEqual(percent.map { $0.message.id }, ["m1"])
-        let mixed = try await store.searchAll(query: "100y 完") // LIKE: no such substring
+        let mixed = try await store.searchAll(query: "100y 完") // no such substring
         XCTAssertTrue(mixed.isEmpty)
-        // Sanity: the present cross-space substring IS found via LIKE.
+        // Sanity: the present cross-space substring IS found.
         let present = try await store.searchAll(query: "100x 完")
         XCTAssertEqual(present.map { $0.message.id }, ["m1"])
         let emoji = try await store.searchAll(query: "🎉🎉🎉")
         XCTAssertTrue(emoji.isEmpty)
-        // Bare quotes take the LIKE fallback as well and must not throw.
+        // Bare quotes are ordinary characters on this single route and must not throw.
         let quotes = try await store.searchAll(query: "\"\"\"")
         XCTAssertTrue(quotes.isEmpty)
-        // 2-character fallback still matches like substring LIKE.
+        // 2-character terms still match as exact substrings.
         let short = try await store.searchAll(query: "完成")
         XCTAssertEqual(short.map { $0.message.id }, ["m1"])
     }
@@ -293,7 +373,7 @@ final class MessageStoreFTSTests: XCTestCase {
 
     // MARK: - Performance: FTS must beat a LIKE table scan
 
-    func testFTSSearchIsAtLeastThreeTimesFasterThanLIKE() async throws {
+    func testTrigramColumnLikeIsAtLeastThreeTimesFasterThanTableScan() async throws {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("ntfyx-fts-perf-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -366,12 +446,12 @@ final class MessageStoreFTSTests: XCTestCase {
             likeTimes.append(Date().timeIntervalSince(likeStart))
         }
 
-        let ftsMedian = ftsTimes.sorted()[iterations / 2]
-        let likeMedian = likeTimes.sorted()[iterations / 2]
-        print("FTS median: \(ftsMedian * 1000)ms, LIKE median: \(likeMedian * 1000)ms, ratio: \(likeMedian / max(ftsMedian, 0.00001))x")
+        let trigramMedian = ftsTimes.sorted()[iterations / 2]
+        let scanMedian = likeTimes.sorted()[iterations / 2]
+        print("Trigram median: \(trigramMedian * 1000)ms, table-scan median: \(scanMedian * 1000)ms, ratio: \(scanMedian / max(trigramMedian, 0.00001))x")
         XCTAssertLessThan(
-            ftsMedian, likeMedian / 3,
-            "FTS should be at least 3x faster than a LIKE scan on 12k rows"
+            trigramMedian, scanMedian / 3,
+            "trigram column LIKE should be at least 3x faster than a base-table LIKE scan on 12k rows"
         )
     }
 

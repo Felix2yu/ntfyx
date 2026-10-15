@@ -94,8 +94,10 @@ enum HistoryDatabase {
             // tokenizer (SQLite 3.34+) slides a 3-character window over each
             // run, which is what makes CJK substring search work — unicode61
             // would treat a space-less Chinese run as one unsplittable token.
-            // Trigram cannot index runs shorter than 3 characters, so queries
-            // of 1-2 characters stay on LIKE (see MessageStore.textSearch).
+            // Search is column-level LIKE inside this virtual table (see
+            // MessageStore.ftsTextFilter): ≥3-character windows ride this index;
+            // 1–2 character terms and queries with an ESCAPE clause stay exact
+            // but lose index acceleration.
             try db.execute(sql: """
             CREATE VIRTUAL TABLE messages_fts USING fts5(
                 title, message, topic,

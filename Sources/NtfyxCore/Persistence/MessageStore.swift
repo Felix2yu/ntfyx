@@ -385,36 +385,6 @@ public actor MessageStore {
 
     // MARK: - Queries
 
-    /// How a user query filters the searchable text columns.
-    enum TextSearch: Equatable {
-        /// `LIKE '%…%'` with ESCAPE — the fallback path for inputs trigram
-        /// cannot index faithfully (short queries, punctuation, symbols).
-        case like(pattern: String)
-        /// FTS5 phrase MATCH against the trigram index.
-        case fts(match: String)
-    }
-
-    /// Routes a raw user query to FTS5 or LIKE.
-    ///
-    /// FTS only takes queries of ≥3 Characters made up entirely of letters/numbers:
-    /// trigram indexes 3-character windows inside letter/number runs, so anything
-    /// shorter has no index entry, and punctuation/symbols split token runs — a
-    /// query like `100%` would match `100x` through trigram (`100` is a window of
-    /// the run `100x`) where substring LIKE must not. CJK ideographs are letters,
-    /// so Chinese substring search goes through FTS.
-    /// Whitespace-only and other inputs stay on LIKE, preserving the old results.
-    static func textSearch(for query: String) -> TextSearch {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count >= 3,
-           trimmed.allSatisfy({ $0.isLetter || $0.isNumber }) {
-            // Phrase quoting makes every byte literal; doubled quotes escape a quote.
-            // (Defensive — the letter/number gate above already excludes them.)
-            let escaped = trimmed.replacingOccurrences(of: "\"", with: "\"\"")
-            return .fts(match: "\"\(escaped)\"")
-        }
-        return .like(pattern: likePattern(query))
-    }
-
     /// Fetches messages of a topic, newest first, with cursor pagination.
     /// - Parameters:
     ///   - limit: max rows to return.
@@ -429,21 +399,11 @@ public actor MessageStore {
         onlyUnread: Bool = false,
         searchText: String? = nil
     ) throws -> [StoredMessage] {
-        let search = searchText.map(Self.textSearch(for:))
-        do {
-            return try fetchMessages(
-                serverURL: serverURL, topic: topic, limit: limit,
-                before: before, onlyUnread: onlyUnread, search: search
-            )
-        } catch {
-            // A malformed FTS query must never break search: retry on LIKE.
-            guard case .fts? = search else { throw error }
-            return try fetchMessages(
-                serverURL: serverURL, topic: topic, limit: limit,
-                before: before, onlyUnread: onlyUnread,
-                search: .like(pattern: Self.likePattern(searchText ?? ""))
-            )
-        }
+        try fetchMessages(
+            serverURL: serverURL, topic: topic, limit: limit,
+            before: before, onlyUnread: onlyUnread,
+            search: searchText.map { Self.ftsTextFilter(columns: ["title", "message"], query: $0) }
+        )
     }
 
     private func fetchMessages(
@@ -452,7 +412,7 @@ public actor MessageStore {
         limit: Int,
         before: PageCursor?,
         onlyUnread: Bool,
-        search: TextSearch?
+        search: FtsTextFilter?
     ) throws -> [StoredMessage] {
         var sql = """
         SELECT server_url, topic, msg_id, sequence_id, event, time, message, title, priority,
@@ -469,15 +429,9 @@ public actor MessageStore {
         if onlyUnread {
             sql += " AND is_read = 0"
         }
-        switch search {
-        case .none:
-            break
-        case .like(let pattern):
-            sql += " AND (title LIKE ? ESCAPE '\\' OR message LIKE ? ESCAPE '\\')"
-            bindings.append(contentsOf: [pattern, pattern])
-        case .fts(let match):
-            sql += " AND rowid_pk IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)"
-            bindings.append(match)
+        if let filter = search {
+            sql += filter.sql
+            bindings.append(contentsOf: [filter.pattern, filter.pattern])
         }
         sql += " ORDER BY time DESC, rowid_pk DESC LIMIT ?"
         bindings.append(limit)
@@ -494,19 +448,13 @@ public actor MessageStore {
     ///   - limit: max rows to return.
     ///   - before: composite `(time, rowID)` cursor for "load older" (audit 2.3).
     func searchAll(query: String, limit: Int = 200, before: PageCursor? = nil) throws -> [StoredMessage] {
-        let search = Self.textSearch(for: query)
-        do {
-            return try fetchAll(limit: limit, before: before, search: search)
-        } catch {
-            guard case .fts = search else { throw error }
-            return try fetchAll(
-                limit: limit, before: before,
-                search: .like(pattern: Self.likePattern(query))
-            )
-        }
+        try fetchAll(
+            limit: limit, before: before,
+            search: Self.ftsTextFilter(columns: ["title", "message", "topic"], query: query)
+        )
     }
 
-    private func fetchAll(limit: Int, before: PageCursor?, search: TextSearch) throws -> [StoredMessage] {
+    private func fetchAll(limit: Int, before: PageCursor?, search: FtsTextFilter) throws -> [StoredMessage] {
         var sql = """
         SELECT server_url, topic, msg_id, sequence_id, event, time, message, title, priority,
                tags_json, click, actions_json, attachment_json, content_type, is_read, is_deleted, rowid_pk
@@ -514,14 +462,8 @@ public actor MessageStore {
         WHERE is_deleted = 0
         """
         var bindings: [DatabaseValueConvertible?] = []
-        switch search {
-        case .like(let pattern):
-            sql += " AND (title LIKE ? ESCAPE '\\' OR message LIKE ? ESCAPE '\\' OR topic LIKE ? ESCAPE '\\')"
-            bindings.append(contentsOf: [pattern, pattern, pattern])
-        case .fts(let match):
-            sql += " AND rowid_pk IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)"
-            bindings.append(match)
-        }
+        sql += search.sql
+        bindings.append(contentsOf: [search.pattern, search.pattern, search.pattern])
 
         if let before {
             sql += " AND (time < ? OR (time = ? AND rowid_pk < ?))"
@@ -634,8 +576,42 @@ public actor MessageStore {
 
     // MARK: - SQL helpers
 
+    /// A ready-to-bind substring search over the trigram FTS table: the SQL fragment
+    /// (appended to the outer `messages` query) plus the LIKE pattern to bind once per
+    /// searched column.
+    struct FtsTextFilter: Equatable {
+        let sql: String
+        let pattern: String
+    }
+
+    /// Builds the `rowid_pk IN (SELECT rowid FROM messages_fts WHERE <columns> LIKE …)`
+    /// filter. All text search runs *inside* the trigram FTS5 virtual table — never as a
+    /// LIKE scan over `messages` — and the predicates are column-level (the virtual table
+    /// has no single text column, so `messages_fts LIKE ?` matches nothing).
+    ///
+    /// Two variants of the same single route:
+    /// - User text without LIKE metacharacters (`% _ \`): plain `LIKE '%…%'`, which the
+    ///   trigram tokenizer accelerates by seeking ≥3-character windows (per-column
+    ///   MULTI-INDEX OR); semantics are already literal, so no ESCAPE is needed.
+    /// - User text containing a metacharacter (e.g. `100%`, `build_job`): the wildcards
+    ///   are escaped and `ESCAPE '\'` is added. FTS5 cannot accelerate a LIKE that has an
+    ///   ESCAPE clause (verified against the system SQLite), so this scans the FTS index,
+    ///   but it keeps `%`/`_` literal — acceleration is never traded for wrong results.
+    static func ftsTextFilter(columns: [String], query: String) -> FtsTextFilter {
+        let needsEscape = query.contains("\\") || query.contains("%") || query.contains("_")
+        let pattern = needsEscape ? likePattern(query) : "%\(query)%"
+        let comparator = needsEscape ? "LIKE ? ESCAPE '\\'" : "LIKE ?"
+        let predicates = columns
+            .map { "\($0) \(comparator)" }
+            .joined(separator: " OR ")
+        return FtsTextFilter(
+            sql: " AND rowid_pk IN (SELECT rowid FROM messages_fts WHERE \(predicates))",
+            pattern: pattern
+        )
+    }
+
     /// Case-insensitive substring LIKE pattern with the wildcards in the user text escaped.
-    private static func likePattern(_ text: String) -> String {
+    static func likePattern(_ text: String) -> String {
         let escaped = text
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "%", with: "\\%")
