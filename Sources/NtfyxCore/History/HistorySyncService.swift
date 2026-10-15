@@ -2,8 +2,9 @@ import Foundation
 import Observation
 
 /// Orchestrates history synchronization between the server cache and the local store.
-/// - Auto incremental sync: `since=<last synced event id>` (falls back to timestamp,
-///   or a 90-day window on first sync) — triggered when a topic is opened.
+/// - Auto incremental sync: `since=<last synced event id>`, or this device's newest stored
+///   row for a topic that was never polled (a 90-day window only when it has no rows at all)
+///   — triggered when a topic is opened.
 /// - Manual full sync: `since=all` — user-initiated, with progress reporting.
 /// Re-entrant calls for the same topic are ignored.
 @MainActor
@@ -103,11 +104,16 @@ public final class HistorySyncService {
         progress[ref] = SyncProgress(phase: .syncing, receivedCount: 0)
 
         do {
-            let since = try await resolveSince(ref: ref, full: full)
+            let store = self.store
+            // Snapshotted before the request: it is both where an incremental sync resumes and
+            // what the replayed rows are classified against, and it must not move while they land.
+            let frontier = (try? await store.maxStoredMessageTime(
+                serverURL: ref.serverURL, topic: ref.topic
+            )) ?? 0
+            let since = try await resolveSince(ref: ref, full: full, frontier: frontier)
             Log.info("History sync \(full ? "(full)" : "(incremental)") for \(ref.topic)@\(ref.serverURL): since=\(since)")
 
             let token = configStore.authToken(forServer: ref.serverURL)
-            let store = self.store
             let result = try await poll(
                 ref.serverURL,
                 ref.topic,
@@ -117,7 +123,9 @@ public final class HistorySyncService {
                     // One transaction per chunk, and one revoke call for however many banners
                     // the chunk's delete/clear events withdrew. The callback runs on the
                     // poll client's actor, so the main-actor notification path is hopped to.
-                    let revoked = try await store.applyBatch(events, serverURL: ref.serverURL)
+                    let revoked = try await store.applyBatch(
+                        events, serverURL: ref.serverURL, readNotNewerThan: frontier
+                    )
                     if !revoked.isEmpty {
                         await MainActor.run {
                             NotificationManager.shared.revoke(messageIDs: revoked)
@@ -160,21 +168,24 @@ public final class HistorySyncService {
         }
     }
 
-    /// Determines the `since` parameter for a sync run.
-    private func resolveSince(ref: TopicRef, full: Bool) async throws -> String {
+    /// Determines the `since` parameter for a sync run, against the newest row this device has.
+    private func resolveSince(ref: TopicRef, full: Bool, frontier: Int) async throws -> String {
         if full {
             return "all"
         }
-        if let info = try await store.latestSyncedInfo(serverURL: ref.serverURL, topic: ref.topic) {
-            // Prefer message id (immune to clock skew); fall back to timestamp.
-            if let id = info.id, !id.isEmpty {
-                return id
-            }
-            if info.time > 0 {
-                return String(info.time)
-            }
+        if let info = try await store.latestSyncedInfo(serverURL: ref.serverURL, topic: ref.topic),
+           let id = info.id, !id.isEmpty {
+            // Prefer message id (immune to clock skew).
+            return id
         }
-        // First sync: limit to a recent window instead of replaying the entire cache.
+        // A topic that was never polled must not reach back for a fixed window either: this
+        // server keeps months of cache, and everything in it older than the newest row here was
+        // already gone through — replaying it lights up the unread badge on a plain open.
+        // Resume at this device's own frontier instead (`since=<time>` includes it).
+        if frontier > 0 {
+            return String(frontier)
+        }
+        // A brand-new subscription has no local row at all: a recent window, not the whole cache.
         let window: TimeInterval = 90 * 24 * 3600
         return String(Int(Date().timeIntervalSince1970 - window))
     }

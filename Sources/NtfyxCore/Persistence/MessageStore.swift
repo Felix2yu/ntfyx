@@ -126,9 +126,18 @@ public actor MessageStore {
     /// Applies a replayed catch-up batch inside one transaction. A `since` replay can carry
     /// tens of thousands of events, and a commit per row would keep the store's serial queue
     /// busy — and the UI waiting on it — for minutes.
+    /// - Parameters:
+    ///   - readNotNewerThan: the newest message time this device held when the replay started
+    ///     (0 when it held none). A row at or below that point is history the device has already
+    ///     gone past — read here or on another device — so it comes in read instead of lighting up
+    ///     the badge. The caller has to snapshot it before the first batch: the store's own
+    ///     `MAX(time)` moves as the replay lands, and same-second rows in one burst would then
+    ///     be filed as read message by message.
     /// - Returns: ids of the messages an action event in this batch withdrew, so their
     /// banners can be revoked in one call.
-    func applyBatch(_ events: [NtfyMessage], serverURL: String) throws -> [String] {
+    func applyBatch(
+        _ events: [NtfyMessage], serverURL: String, readNotNewerThan: Int = 0
+    ) throws -> [String] {
         var revoked: [String] = []
         try db.inTransaction(.immediate) { db in
             for event in events {
@@ -146,8 +155,9 @@ public actor MessageStore {
                     // The watermark is a primary-key point lookup inside the same
                     // transaction; the actor's in-memory cache is skipped here because
                     // this nonisolated SQL helper cannot touch actor state.
-                    let watermark = try Self.fetchWatermark(
-                        db, serverURL: serverURL, topic: event.topic
+                    let watermark = max(
+                        try Self.fetchWatermark(db, serverURL: serverURL, topic: event.topic),
+                        readNotNewerThan
                     )
                     try Self.insertRow(
                         db, message: event, serverURL: serverURL,
@@ -529,6 +539,18 @@ public actor MessageStore {
     }
 
     // MARK: - Sync state
+
+    /// The newest message time this device has ever stored for a topic — its frontier in the
+    /// server's timeline. Tombstones count: that row really was delivered here.
+    func maxStoredMessageTime(serverURL: String, topic: String) throws -> Int? {
+        try db.inDatabase { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT MAX(time) FROM messages WHERE server_url = ? AND topic = ?",
+                arguments: [serverURL, topic]
+            )
+        }
+    }
 
     func latestSyncedInfo(serverURL: String, topic: String) throws -> (id: String?, time: Int)? {
         try db.inDatabase { db in
