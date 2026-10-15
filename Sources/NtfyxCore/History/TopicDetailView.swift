@@ -6,6 +6,9 @@ struct TopicDetailView: View {
     @Bindable var viewModel: HistoryViewModel
     let topicRef: TopicRef
 
+    private var topicLabel: String { viewModel.label(for: topicRef) }
+    private var idTooltip: Text { topicLabel == topicRef.topic ? Text(verbatim: "") : Text("主题 id：\(topicRef.topic)") }
+
     var body: some View {
         VStack(spacing: 0) {
             toolbar
@@ -20,7 +23,7 @@ struct TopicDetailView: View {
         }
         .frame(minWidth: 560)
         .confirmationDialog(
-            "清空主题「\(topicRef.topic)」的全部消息？",
+            "清空主题「\(topicLabel)」的全部消息？",
             isPresented: Binding(
                 get: { viewModel.confirmClearTopic != nil },
                 set: { if !$0 { viewModel.confirmClearTopic = nil } }
@@ -49,8 +52,9 @@ struct TopicDetailView: View {
 
     private var toolbar: some View {
         HStack(spacing: 10) {
-            Text(topicRef.topic)
+            Text(topicLabel)
                 .font(.headline)
+                .help(idTooltip)
 
             Spacer()
 
@@ -104,6 +108,7 @@ struct TopicDetailView: View {
                             MessageCardView(
                                 stored: stored,
                                 attachmentState: stored.message.attachment.flatMap { viewModel.attachmentStates[$0.url] },
+                                topicLabel: viewModel.label(for: topicRef),
                                 onToggleRead: { viewModel.toggleRead(stored) },
                                 onDelete: { viewModel.delete(stored) },
                                 onCopy: { viewModel.copyMessage(stored) },

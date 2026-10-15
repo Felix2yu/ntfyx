@@ -39,6 +39,14 @@ public final class NotificationManager: NSObject {
         topicConfigLookup?(serverBaseURL, topic)
     }
 
+    /// The name a topic is shown under in a banner: the user's 备注 when this server has one.
+    private func bannerLabel(for topic: String, serverURL: String?) -> String {
+        guard let serverURL, let config = topicConfig(serverBaseURL: serverURL, topic: topic) else {
+            return topic
+        }
+        return config.label
+    }
+
     /// Icons and action categories describe a topic, not a message, but both used to be
     /// rebuilt for every banner: the SF Symbol round trip (TIFF → PNG) per message, and a
     /// `getNotificationCategories` + `setNotificationCategories` pair — two XPC calls plus a copy
@@ -206,7 +214,9 @@ public final class NotificationManager: NSObject {
                 showBasicNotification(for: message)
             }
         case .coalesced(let count, let topics, let firstOfBurst, let absorbed):
-            showBurstSummary(count: count, topics: topics, firstOfBurst: firstOfBurst, absorbed: absorbed)
+            // The storm banner names topics, so it names them the way the user did.
+            let labels = topics.map { bannerLabel(for: $0, serverURL: serverURL) }
+            showBurstSummary(count: count, topics: labels, firstOfBurst: firstOfBurst, absorbed: absorbed)
         }
     }
 
@@ -277,12 +287,21 @@ public final class NotificationManager: NSObject {
         }
     }
 
+    /// Banner title for a message. A message with no title of its own is named by its
+    /// topic — under the name the user gave it, not the server's ASCII id.
+    nonisolated static func bannerTitle(for message: NtfyMessage, topicLabel: String) -> String {
+        let emojiPrefix = EmojiTags.emojiPrefix(for: message.tags)
+        if let title = message.plainTextTitle ?? message.title, !title.isEmpty {
+            return emojiPrefix + title
+        }
+        return emojiPrefix + topicLabel
+    }
+
     private func showTopicNotification(for message: NtfyMessage, topicConfig: TopicConfig, serverURL: String?, passive: Bool = false) {
         let content = UNMutableNotificationContent()
-        let emojiPrefix = EmojiTags.emojiPrefix(for: message.tags)
         // Use plain text versions to strip markdown syntax (macOS notifications don't render markdown)
-        content.title = emojiPrefix + (message.plainTextTitle ?? message.title ?? "\(message.topic)")
-        content.body = message.plainTextMessage ?? message.message ?? "\(message.topic)"
+        content.title = Self.bannerTitle(for: message, topicLabel: topicConfig.label)
+        content.body = message.plainTextMessage ?? message.message ?? topicConfig.label
         if passive {
             content.interruptionLevel = .passive
             content.sound = nil

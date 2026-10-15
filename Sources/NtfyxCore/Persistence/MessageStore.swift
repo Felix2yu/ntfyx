@@ -380,15 +380,16 @@ public actor MessageStore {
 
     // MARK: - Queries
 
-    /// Fetches messages of a topic, newest first, with cursor pagination.
+    /// Fetches messages newest first, with cursor pagination.
     /// - Parameters:
+    ///   - topic: topic name, or `nil` to merge every topic stored for `serverURL`.
     ///   - limit: max rows to return.
     ///   - before: composite `(time, rowID)` cursor for "load older" (audit 2.3).
     ///   - onlyUnread: filter to unread messages only.
     ///   - searchText: substring match on title/message (case-insensitive).
     func messages(
         serverURL: String,
-        topic: String,
+        topic: String?,
         limit: Int = 100,
         before: PageCursor? = nil,
         onlyUnread: Bool = false,
@@ -403,7 +404,7 @@ public actor MessageStore {
 
     private func fetchMessages(
         serverURL: String,
-        topic: String,
+        topic: String?,
         limit: Int,
         before: PageCursor?,
         onlyUnread: Bool,
@@ -413,10 +414,14 @@ public actor MessageStore {
         SELECT server_url, topic, msg_id, sequence_id, event, time, message, title, priority,
                tags_json, click, actions_json, attachment_json, content_type, is_read, is_deleted, rowid_pk
         FROM messages
-        WHERE server_url = ? AND topic = ? AND is_deleted = 0
+        WHERE server_url = ? AND is_deleted = 0
         """
-        var bindings: [DatabaseValueConvertible?] = [serverURL, topic]
+        var bindings: [DatabaseValueConvertible?] = [serverURL]
 
+        if let topic {
+            sql += " AND topic = ?"
+            bindings.append(topic)
+        }
         if let before {
             sql += " AND (time < ? OR (time = ? AND rowid_pk < ?))"
             bindings.append(contentsOf: [before.time, before.time, Int(before.rowID)])
@@ -432,8 +437,12 @@ public actor MessageStore {
         bindings.append(limit)
 
         return try db.inDatabase { db in
-            try Row.fetchAll(db, sql: sql, arguments: StatementArguments(bindings)).map {
-                try Self.storedMessage(from: $0, serverURL: serverURL, topic: topic)
+            try Row.fetchAll(db, sql: sql, arguments: StatementArguments(bindings)).map { row in
+                // An unscoped page spans every topic, so the row itself carries the pair;
+                // a scoped page re-reads the values it filtered on.
+                let rowServerURL = row["server_url"] as String? ?? ""
+                let rowTopic = (row["topic"] as String?) ?? topic ?? ""
+                return try Self.storedMessage(from: row, serverURL: rowServerURL, topic: rowTopic)
             }
         }
     }

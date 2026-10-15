@@ -23,6 +23,9 @@ public struct NotificationAction: Codable, Equatable, Sendable {
 
 public struct TopicConfig: Codable, Equatable, Sendable {
     let name: String
+    /// Free-form alias shown wherever the topic is named. Topic ids are ASCII-only on the
+    /// server, so this is the one place a Chinese name can live; empty falls back to `name`.
+    let displayName: String?
     let iconPath: String?
     let iconSymbol: String?
     let autoRunScript: String?
@@ -33,8 +36,9 @@ public struct TopicConfig: Codable, Equatable, Sendable {
     let actions: [NotificationAction]?
     let fetchMissed: Bool?
 
-    init(name: String, iconPath: String? = nil, iconSymbol: String? = nil, autoRunScript: String? = nil, autoRunScriptArgs: [String]? = nil, silent: Bool? = nil, clickUrl: ClickUrlConfig? = nil, actions: [NotificationAction]? = nil, fetchMissed: Bool? = nil) {
+    init(name: String, displayName: String? = nil, iconPath: String? = nil, iconSymbol: String? = nil, autoRunScript: String? = nil, autoRunScriptArgs: [String]? = nil, silent: Bool? = nil, clickUrl: ClickUrlConfig? = nil, actions: [NotificationAction]? = nil, fetchMissed: Bool? = nil) {
         self.name = name
+        self.displayName = displayName
         self.iconPath = iconPath
         self.iconSymbol = iconSymbol
         self.autoRunScript = autoRunScript
@@ -47,6 +51,7 @@ public struct TopicConfig: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case name
+        case displayName = "display_name"
         case iconPath = "icon_path"
         case iconSymbol = "icon_symbol"
         case autoRunScript = "auto_run_script"
@@ -60,6 +65,14 @@ public struct TopicConfig: Codable, Equatable, Sendable {
     /// Whether to fetch missed messages for this topic (default: false)
     var shouldFetchMissed: Bool {
         fetchMissed ?? false
+    }
+
+    /// The user-visible name: `displayName` when it holds actual text, the topic id otherwise.
+    /// Identity stays `name` — this is a label only, never a lookup key.
+    var label: String {
+        guard let displayName else { return name }
+        let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? name : trimmed
     }
 }
 

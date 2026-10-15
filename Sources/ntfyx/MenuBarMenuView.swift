@@ -153,10 +153,11 @@ struct MenuBarMenuView: View {
                     } label: {
                         Text(dotted(dotColor(status.state), status.url))
                     }
-                    .help("\(stateText(status.state))\n主题：\(status.topics.joined(separator: ", "))")
+                    .help("\(stateText(status.state))\n主题：\(status.topics.map(\.label).joined(separator: ", "))")
 
-                    ForEach(status.topics, id: \.self) { topic in
-                        Text("    \(topic)")
+                    ForEach(status.topics, id: \.id) { topic in
+                        Text("    \(topic.label)")
+                            .help(Text(topic.idTooltip))
                     }
                 }
             }

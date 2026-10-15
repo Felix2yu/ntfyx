@@ -414,7 +414,9 @@ public final class Ntfyx {
 
         // Update the menu bar server list while keeping untouched servers' state.
         let serverInfos = config.servers.map { server in
-            (url: server.url, topics: server.topics.map { $0.name })
+            (url: server.url, topics: server.topics.map {
+                ConnectionRegistry.TopicRow(id: $0.name, label: $0.label)
+            })
         }
         Task { @MainActor in
             connections.updateServers(servers: serverInfos)
@@ -645,7 +647,10 @@ public final class Ntfyx {
                 }
                 continue
             }
-            manager.showCatchUpSummary(count: tally.count, topics: tally.topics.sorted())
+            let labels = tally.topics.sorted().map {
+                configStore.topicConfig(serverURL: serverURL, topic: $0)?.label ?? $0
+            }
+            manager.showCatchUpSummary(count: tally.count, topics: labels)
         }
     }
 

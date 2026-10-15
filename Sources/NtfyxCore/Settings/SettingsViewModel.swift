@@ -53,7 +53,14 @@ struct EditableServer: Identifiable {
 struct EditableTopic: Identifiable {
     let id: UUID
     var name: String
+    var displayName: String?
     var fetchMissed: Bool?
+
+    /// What the row and every other surface show: the note when it holds text, the id otherwise.
+    var label: String {
+        let trimmed = displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? name : trimmed
+    }
 
     // Phase 2 fields (preserved during round-trip but not editable yet)
     var iconPath: String?
@@ -64,9 +71,10 @@ struct EditableTopic: Identifiable {
     var clickUrl: ClickUrlConfig?
     var actions: [NotificationAction]?
 
-    init(id: UUID = UUID(), name: String = "", fetchMissed: Bool? = nil, iconPath: String? = nil, iconSymbol: String? = nil, autoRunScript: String? = nil, autoRunScriptArgs: [String]? = nil, silent: Bool? = nil, clickUrl: ClickUrlConfig? = nil, actions: [NotificationAction]? = nil) {
+    init(id: UUID = UUID(), name: String = "", displayName: String? = nil, fetchMissed: Bool? = nil, iconPath: String? = nil, iconSymbol: String? = nil, autoRunScript: String? = nil, autoRunScriptArgs: [String]? = nil, silent: Bool? = nil, clickUrl: ClickUrlConfig? = nil, actions: [NotificationAction]? = nil) {
         self.id = id
         self.name = name
+        self.displayName = displayName
         self.fetchMissed = fetchMissed
         self.iconPath = iconPath
         self.iconSymbol = iconSymbol
@@ -200,6 +208,7 @@ final class SettingsViewModel {
                 topics: server.topics.map { topic in
                     EditableTopic(
                         name: topic.name,
+                        displayName: topic.displayName,
                         fetchMissed: topic.fetchMissed,
                         iconPath: topic.iconPath,
                         iconSymbol: topic.iconSymbol,
@@ -234,6 +243,12 @@ final class SettingsViewModel {
                     saveError = "主题名称不能为空"
                     return
                 }
+                // Menu bar rows and notification titles have to stay readable.
+                let note = topic.displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if note.count > 64 {
+                    saveError = "主题 \(topic.name) 的备注最长 64 个字符"
+                    return
+                }
             }
             // Check for duplicate topic names within a server
             let topicNames = server.topics.map { $0.name }
@@ -257,8 +272,10 @@ final class SettingsViewModel {
         // Build AppConfig
         let serverConfigs = servers.map { server in
             let topicConfigs = server.topics.map { topic in
-                TopicConfig(
+                let note = topic.displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return TopicConfig(
                     name: topic.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                    displayName: note.isEmpty ? nil : note,
                     iconPath: topic.iconPath,
                     iconSymbol: topic.iconSymbol,
                     autoRunScript: topic.autoRunScript,

@@ -6,12 +6,16 @@ import SwiftUI
 struct MessageCardView: View {
     let stored: StoredMessage
     let attachmentState: HistoryViewModel.AttachmentState?
+    /// The topic's configured 备注; nil when the caller has none, so the id shows.
+    var topicLabel: String?
     let onToggleRead: () -> Void
     let onDelete: () -> Void
     let onCopy: () -> Void
     let onOpenURL: (String) -> Void
     let onAction: (NtfyMessage.NtfyAction) -> Void
     let onDownloadAttachment: () -> Void
+    /// Labels the topic in the merged per-server list; a single topic's list needs no label.
+    var showsTopic: Bool = false
 
     @State private var isHovered = false
     /// nil = follow the 默认展开 setting; set once the user toggles this card.
@@ -22,6 +26,14 @@ struct MessageCardView: View {
     private var expanded: Bool { expansionOverride ?? expandByDefault }
 
     private var message: NtfyMessage { stored.message }
+
+    /// `fullTitle` already falls back to the topic name, so a titleless message would
+    /// otherwise wear the same word twice.
+    private var showsTopicChip: Bool {
+        guard showsTopic else { return false }
+        let title = message.plainTextTitle ?? message.title ?? ""
+        return !title.isEmpty
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -71,6 +83,16 @@ struct MessageCardView: View {
                     .foregroundStyle(priorityIcon.color)
             }
 
+            if showsTopicChip {
+                Text(displayedTopic)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.secondary.opacity(0.15)))
+            }
+
             Text(fullTitle)
                 .font(.callout.weight(.semibold))
                 .lineLimit(1)
@@ -93,8 +115,11 @@ struct MessageCardView: View {
         if let title, !title.isEmpty {
             return emoji + title
         }
-        return emoji + message.topic
+        return emoji + displayedTopic
     }
+
+    /// The topic the way the user named it, or its id when no 备注 is configured.
+    private var displayedTopic: String { topicLabel ?? message.topic }
 
     private var hoverButtons: some View {
         HStack(spacing: 2) {

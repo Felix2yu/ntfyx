@@ -23,8 +23,14 @@ struct TopicRowView: View {
         } label: {
             HStack(spacing: 6) {
                 iconPreview
-                Text(topic.name.isEmpty ? "新主题" : topic.name)
-                    .foregroundStyle(topic.name.isEmpty ? .secondary : .primary)
+                let label = topic.label.isEmpty ? "新主题" : topic.label
+                Text(label)
+                    .foregroundStyle(topic.label.isEmpty ? .secondary : .primary)
+                if label != topic.name && !topic.name.isEmpty {
+                    Text(topic.name)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
                 badges
                 Spacer()
             }
@@ -82,7 +88,7 @@ struct TopicRowView: View {
 // MARK: - Topic settings editor
 
 /// Graphical editor for the per-topic options of the config file:
-/// name, fetch_missed, silent, icon_symbol, icon_path, click_url,
+/// name, display_name, fetch_missed, silent, icon_symbol, icon_path, click_url,
 /// auto_run_script and actions.
 struct TopicSettingsView: View {
     @Binding var topic: EditableTopic
@@ -96,6 +102,14 @@ struct TopicSettingsView: View {
                 TextField("主题名称", text: $topic.name)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 260)
+                    .help("服务器上的主题 id，只能是英文字母、数字与 -_.")
+            }
+
+            LabeledContent("备注") {
+                TextField("显示名称（可用中文）", text: textBinding(\.displayName))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 260)
+                    .help("菜单栏、历史列表和通知标题显示这个名字；留空则显示主题 id")
             }
 
             Toggle("重连时拉取错过的消息", isOn: Binding(

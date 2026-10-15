@@ -48,6 +48,7 @@ public enum ConfigSyncTranslator {
                 topics: server.topics.map { topic in
                     SyncTopic(
                         name: topic.name,
+                        displayName: topic.displayName,
                         iconSymbol: topic.iconSymbol,
                         silent: topic.silent,
                         clickUrl: topic.clickUrl,
@@ -170,6 +171,7 @@ public enum ConfigSyncTranslator {
     private static func merge(topic sync: SyncTopic, into existing: TopicConfig?) -> TopicConfig {
         TopicConfig(
             name: sync.name,
+            displayName: sync.displayName,
             iconPath: existing?.iconPath,
             iconSymbol: sync.iconSymbol,
             autoRunScript: existing?.autoRunScript,

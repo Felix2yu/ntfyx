@@ -21,6 +21,15 @@ public enum ConfigFile {
         let raw: String
     }
 
+    /// Yams escapes every non-ASCII scalar unless told otherwise, which would turn a Chinese
+    /// `display_name` or action title into `"\u751F\u4EA7..."` on the next save. Both the local
+    /// file and the cloud document are meant to stay hand-editable, so scalars go out as UTF-8.
+    static func utf8Encoder() -> YAMLEncoder {
+        let encoder = YAMLEncoder()
+        encoder.options.allowUnicode = true
+        return encoder
+    }
+
     /// Reads, permission-checks and decodes the config file at `path`.
     public static func read(from path: String) throws -> Loaded {
         guard FileManager.default.fileExists(atPath: path) else {
@@ -67,7 +76,7 @@ public enum ConfigFile {
             attributes: nil
         )
 
-        let yamlString = try YAMLEncoder().encode(config)
+        let yamlString = try Self.utf8Encoder().encode(config)
 
         let original = try? String(contentsOf: url, encoding: .utf8)
         let output = ConfigTextMerger.merge(body: yamlString, original: original)
@@ -99,6 +108,7 @@ public enum ConfigFile {
             #   - "*.trusted.org"
             topics:
               - name: alerts
+                display_name: 生产告警  # 可选，界面上显示的名字；主题 id 只能是英文
                 icon_symbol: bell.fill
                 # click_url: false  # 禁止点击通知时打开浏览器
                 actions:
@@ -147,6 +157,7 @@ public enum ConfigFile {
     #     # token: your_token_here  # 或使用 'ntfyxctl auth add <服务器地址> <令牌>' 存入钥匙串
     #     topics:
     #       - name: deployments
+    #         display_name: 部署通知  # 界面上显示的名字，主题 id 只能是英文
     #
     # 更多可选项（运行 'ntfyxctl init' 可生成完整示例文件）：
     #   fetch_missed: true           # 断线重连后补收离线期间的消息
@@ -205,8 +216,8 @@ public enum ConfigFile {
     /// Known keys at each level of the config
     private static let knownRootKeys: Set<String> = ["servers", "local_server_port"]
     private static let knownServerKeys: Set<String> = ["url", "token", "topics", "allowed_schemes", "allowed_domains", "fetch_missed"]
-    private static let knownTopicKeys: Set<String> = ["name", "icon_path", "icon_symbol", "auto_run_script", "silent", "click_url", "actions", "fetch_missed"]
-    private static let knownActionKeys: Set<String> = ["title", "type", "path", "url", "name", "script"]
+    private static let knownTopicKeys: Set<String> = ["name", "display_name", "icon_path", "icon_symbol", "auto_run_script", "auto_run_script_args", "silent", "click_url", "actions", "fetch_missed"]
+    private static let knownActionKeys: Set<String> = ["title", "type", "path", "url", "name", "script", "args"]
 
     /// Checks YAML for unknown keys that would be silently ignored.
     /// Returns warning message if unknown keys found, nil otherwise.

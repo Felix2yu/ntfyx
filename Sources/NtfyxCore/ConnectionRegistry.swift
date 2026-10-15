@@ -18,15 +18,30 @@ public final class ConnectionRegistry {
         case disconnected  // Was connected, now lost (red)
     }
 
+    /// One subscribed topic as the menu shows it: the id never changes, the label is the
+    /// user's 备注 when they set one.
+    public struct TopicRow: Equatable, Sendable {
+        public let id: String
+        public let label: String
+
+        public init(id: String, label: String) {
+            self.id = id
+            self.label = label
+        }
+
+        /// Hover text naming the English id, but only where it adds information to the label.
+        public var idTooltip: String { label == id ? "" : "主题 id：\(id)" }
+    }
+
     public struct ServerConnectionStatus {
         public let url: String
-        public let topics: [String]
+        public let topics: [TopicRow]
         public var isConnected: Bool
         public var hasEverConnected: Bool  // Track if we've ever successfully connected
         public var hasFailedAttempt: Bool  // Track if at least one attempt ended in failure
 
         public init(url: String,
-                    topics: [String],
+                    topics: [TopicRow],
                     isConnected: Bool,
                     hasEverConnected: Bool,
                     hasFailedAttempt: Bool = false) {
@@ -86,7 +101,7 @@ public final class ConnectionRegistry {
     /// Applies a new server list while keeping the connection state of servers that
     /// stayed subscribed — used by the incremental config reload (audit 2.2), where
     /// untouched connections must not blink back to "connecting".
-    public func updateServers(servers: [(url: String, topics: [String])]) {
+    public func updateServers(servers: [(url: String, topics: [TopicRow])]) {
         stopPulse()
         var updated: [String: ServerConnectionStatus] = [:]
         for server in servers {

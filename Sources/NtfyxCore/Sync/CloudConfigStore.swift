@@ -228,7 +228,7 @@ public final class CloudConfigStore: @unchecked Sendable {
     static func encoded(_ document: SyncDocument) throws -> String {
         let body: String
         do {
-            body = try YAMLEncoder().encode(document.canonicalized)
+            body = try ConfigFile.utf8Encoder().encode(document.canonicalized)
         } catch {
             throw ConfigSyncError.cloudWriteFailed(error.localizedDescription)
         }

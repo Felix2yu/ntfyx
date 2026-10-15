@@ -20,6 +20,7 @@ servers:
       - homeassistant
     topics:
       - name: homeassistant-alerts
+        display_name: "智能家居告警"  # 界面显示这个名字；主题 id 只能是英文
         icon_path: /Users/you/icons/homeassistant.png
         actions:
           - title: "打开 Home Assistant"

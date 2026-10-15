@@ -188,7 +188,8 @@ servers:
 
 #### 主题字段
 
-- `name`（必填）：主题名称
+- `name`（必填）：主题名称，服务器只接受英文 id（`[-_A-Za-z0-9]`）
+- `display_name`（可选）：界面上显示的名字，可用中文；留空则显示 `name`
 - `icon_symbol`（可选）：SF Symbol 图标名称
 - `icon_path`（可选）：本地图片文件路径
 - `auto_run_script`（可选）：每条消息到达时自动执行的脚本
@@ -239,7 +240,7 @@ servers:
 | 同步 | 只留在本机 |
 | ---- | ---------- |
 | 服务器地址、令牌 | `icon_path` 本地图标路径 |
-| 主题名、`icon_symbol`、`silent`、`click_url`、`fetch_missed` | `auto_run_script` 脚本路径 |
+| 主题名、`display_name`、`icon_symbol`、`silent`、`click_url`、`fetch_missed` | `auto_run_script` 脚本路径 |
 | `allowed_schemes`、`allowed_domains` | `actions` 通知按钮 |
 | | `local_server_port` 本地通知服务端口 |
 

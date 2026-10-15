@@ -43,12 +43,11 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
                     AppEnvironment.openSettings()
                 }
             } else {
-                // SwiftUI may already be restoring the history scene from the previous
-                // session; wait for that to land before asking for another window, or we
-                // end up with two.
+                // The history scene is a single-instance Window, so this is idempotent
+                // even when SwiftUI has already restored the window from last session.
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 300_000_000)
-                    openHistoryIfNoWindow()
+                    AppEnvironment.shared.router.requestHistory()
                 }
             }
 
@@ -73,15 +72,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    /// Opens the history scene unless one already exists (restored by SwiftUI or still
-    /// open from a Dock reopen that raced us).
-    private func openHistoryIfNoWindow() {
-        if !NSApp.windows.contains(where: { $0.title == "通知历史" }) {
-            AppEnvironment.shared.router.requestHistory()
-        }
-    }
-
-    /// Suppress SwiftUI's automatic "untitled" WindowGroup window both at launch and on
+    /// Suppress SwiftUI's automatic "untitled" window both at launch and on
     /// reopen. The history scene is opened explicitly by the router (first launch /
     /// reopen / menu), and `serve` must never sprout a window on its own.
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {

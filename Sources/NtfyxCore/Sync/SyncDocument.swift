@@ -155,6 +155,7 @@ public struct SyncServer: Codable, Equatable, Sendable {
 
 struct SyncTopic: Codable, Equatable, Sendable {
     var name: String
+    var displayName: String?
     var iconSymbol: String?
     var silent: Bool?
     var clickUrl: ClickUrlConfig?
@@ -162,6 +163,7 @@ struct SyncTopic: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case name
+        case displayName = "display_name"
         case iconSymbol = "icon_symbol"
         case silent
         case clickUrl = "click_url"

@@ -1,7 +1,7 @@
 import SwiftUI
 import NtfyxCore
 
-/// Root content of the `history` WindowGroup scene: observes the environment's shared
+/// Root content of the `history` Window scene: observes the environment's shared
 /// history view model, which the scene task prepares once the history store has opened.
 struct HistorySceneRoot: View {
     @Environment(AppEnvironment.self) private var env

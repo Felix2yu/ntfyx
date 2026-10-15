@@ -23,16 +23,35 @@ public final class HistoryViewModel {
         public var id: String { "\(ref.serverURL)|\(ref.topic)" }
         let ref: TopicRef
         public let iconSymbol: String?
+        /// The configured 备注, or the topic id when none is set.
+        public let label: String
         public var unread: Int
     }
 
     var groups: [ServerGroup] = []
 
-    var selectedTopic: TopicRef? {
+    /// Sidebar selection: one topic, or every topic of one server merged into one timeline.
+    enum Selection: Hashable {
+        case topic(TopicRef)
+        case serverAll(String)
+    }
+
+    var selection: Selection? {
         didSet {
-            guard oldValue != selectedTopic else { return }
+            guard oldValue != selection else { return }
             handleSelectionChange()
         }
+    }
+
+    var selectedTopic: TopicRef? {
+        if case .topic(let ref) = selection { return ref }
+        return nil
+    }
+
+    /// Server whose topics are merged into the list, nil unless the aggregate is selected.
+    var selectedServerAll: String? {
+        if case .serverAll(let serverURL) = selection { return serverURL }
+        return nil
     }
 
     var messages: [StoredMessage] = []
@@ -170,6 +189,7 @@ public final class HistoryViewModel {
                         TopicEntry(
                             ref: TopicRef(serverURL: server.url, topic: topic.name),
                             iconSymbol: topic.iconSymbol,
+                            label: topic.label,
                             unread: counts[TopicRef(serverURL: server.url, topic: topic.name)] ?? 0
                         )
                     }
@@ -184,14 +204,42 @@ public final class HistoryViewModel {
         unreadCounts.values.reduce(0, +)
     }
 
+    /// The name a topic is shown under: its configured 备注, else the id itself.
+    /// Unsubscribed topics (server browser, orphaned history rows) have no config, so they
+    /// keep showing the id.
+    func label(for ref: TopicRef) -> String {
+        configStore.config?.topicConfig(serverURL: ref.serverURL, topic: ref.topic)?.label ?? ref.topic
+    }
+
     func unread(for ref: TopicRef) -> Int {
         unreadCounts[ref] ?? 0
+    }
+
+    /// Unread messages over every topic the server has history rows for.
+    func unread(forServer serverURL: String) -> Int {
+        unreadCounts.reduce(0) { total, entry in
+            entry.key.serverURL == serverURL ? total + entry.value : total
+        }
     }
 
     // MARK: - Selection & messages
 
     func selectTopic(_ ref: TopicRef?) {
-        selectedTopic = ref
+        selection = ref.map(Selection.topic)
+    }
+
+    /// Selects the merged timeline of every topic stored for this server.
+    func selectServerAll(_ serverURL: String) {
+        selection = .serverAll(serverURL)
+    }
+
+    /// What the message list pages through; a nil topic means every topic of the server.
+    private var messageScope: (serverURL: String, topic: String?)? {
+        switch selection {
+        case .topic(let ref): return (ref.serverURL, ref.topic)
+        case .serverAll(let serverURL): return (serverURL, nil)
+        case nil: return nil
+        }
     }
 
     /// Selects the first subscribed topic matching `name` on any configured server.
@@ -210,7 +258,9 @@ public final class HistoryViewModel {
     private func handleSelectionChange() {
         serverSyncNotice = nil
         reloadMessages()
-        if let ref = selectedTopic {
+        // Only a single topic syncs on selection: the merged view would fan the pull out
+        // over every topic of the server, and it stays current through store changes anyway.
+        if case .topic(let ref) = selection {
             Task { [weak self] in
                 guard let self else { return }
                 await self.syncService.syncIncremental(ref)
@@ -221,7 +271,7 @@ public final class HistoryViewModel {
     }
 
     func reloadMessages() {
-        guard let ref = selectedTopic else {
+        guard let scope = messageScope else {
             messages = []
             hasMoreMessages = false
             return
@@ -234,8 +284,8 @@ public final class HistoryViewModel {
             guard let self else { return }
             do {
                 let page = try await self.store.messages(
-                    serverURL: ref.serverURL,
-                    topic: ref.topic,
+                    serverURL: scope.serverURL,
+                    topic: scope.topic,
                     limit: Self.pageSize,
                     before: nil,
                     onlyUnread: onlyUnread,
@@ -301,7 +351,7 @@ public final class HistoryViewModel {
 
     /// Loads older messages (cursor pagination).
     func loadOlder() {
-        guard let ref = selectedTopic,
+        guard let scope = messageScope,
               !isLoadingOlder,
               hasMoreMessages,
               let oldest = messages.last else { return }
@@ -315,8 +365,8 @@ public final class HistoryViewModel {
             defer { self.isLoadingOlder = false }
             do {
                 let older = try await self.store.messages(
-                    serverURL: ref.serverURL,
-                    topic: ref.topic,
+                    serverURL: scope.serverURL,
+                    topic: scope.topic,
                     limit: Self.pageSize,
                     before: olderCursor,
                     onlyUnread: onlyUnread,
@@ -390,6 +440,19 @@ public final class HistoryViewModel {
     /// topic, so a huge catch-up backlog costs a handful of requests instead of thousands.
     func markEverythingRead() {
         let refs = unreadCounts.filter { $0.value > 0 }.map(\.key)
+        guard !refs.isEmpty else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            for ref in refs {
+                await markTopicRead(for: ref, syncToServer: true)
+            }
+        }
+    }
+
+    /// Marks every topic of one server read — the merged view's version of 全部已读, since
+    /// the per-topic button can only ever see one topic.
+    func markServerAllRead(serverURL: String) {
+        let refs = unreadCounts.filter { $0.key.serverURL == serverURL && $0.value > 0 }.map(\.key)
         guard !refs.isEmpty else { return }
         Task { [weak self] in
             guard let self else { return }
@@ -635,7 +698,7 @@ public final class HistoryViewModel {
             do {
                 _ = try await self.topicRetrier(ref.serverURL, ref.topic, token)
             } catch {
-                self.serverTopicsError = "退役 \(ref.topic) 失败：\((error as? LocalizedError)?.errorDescription ?? "\(error)")"
+                self.serverTopicsError = "退役 \(self.label(for: ref)) 失败：\((error as? LocalizedError)?.errorDescription ?? "\(error)")"
                 return
             }
             NotificationManager.shared.revoke(
@@ -731,9 +794,18 @@ public final class HistoryViewModel {
         guard !refs.isEmpty || isGlobal else { return }
 
         refreshSidebar()
-        guard let selected = selectedTopic else { return }
-        if isGlobal || refs.contains(selected) {
-            reloadMessages()
+        switch selection {
+        case .topic(let selected):
+            if isGlobal || refs.contains(selected) {
+                reloadMessages()
+            }
+        case .serverAll(let serverURL):
+            // The merged list is only interested in changes under its own server.
+            if isGlobal || refs.contains(where: { $0.serverURL == serverURL }) {
+                reloadMessages()
+            }
+        case nil:
+            break
         }
     }
 

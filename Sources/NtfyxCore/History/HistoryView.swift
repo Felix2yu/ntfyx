@@ -26,7 +26,7 @@ public struct HistoryView: View {
         } detail: {
             detailColumn
                 // Detail-column ideal (690 = 950 window − 260 sidebar) makes the
-                // WindowGroup scene open at its defaultSize instead of shrink-to-fit.
+                // Window scene open at its defaultSize instead of shrink-to-fit.
                 .frame(
                     minWidth: 460, idealWidth: 690, maxWidth: .infinity,
                     minHeight: 480, idealHeight: 620, maxHeight: .infinity
@@ -64,7 +64,7 @@ public struct HistoryView: View {
             TopicBrowserView(viewModel: viewModel)
         }
         .confirmationDialog(
-            "退役主题「\(viewModel.confirmRetireTopic?.topic ?? "")」？",
+            "退役主题「\(viewModel.confirmRetireTopic.map { viewModel.label(for: $0) } ?? "")」？",
             isPresented: Binding(
                 get: { viewModel.confirmRetireTopic != nil },
                 set: { if !$0 { viewModel.confirmRetireTopic = nil } }
@@ -90,6 +90,9 @@ public struct HistoryView: View {
     private var detailColumn: some View {
         if viewModel.isGlobalSearchActive {
             globalSearchResults
+        } else if let serverURL = viewModel.selectedServerAll {
+            ServerHistoryView(viewModel: viewModel, serverURL: serverURL)
+                .id(serverURL)  // reset scroll state when switching servers
         } else if let ref = viewModel.selectedTopic {
             TopicDetailView(viewModel: viewModel, topicRef: ref)
                 .id(ref)  // reset scroll state when switching topics
@@ -103,9 +106,9 @@ public struct HistoryView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        List(selection: Binding<TopicRef?>(
-            get: { viewModel.selectedTopic },
-            set: { viewModel.selectTopic($0) }
+        List(selection: Binding<HistoryViewModel.Selection?>(
+            get: { viewModel.selection },
+            set: { viewModel.selection = $0 }
         )) {
             if viewModel.groups.isEmpty {
                 Text("未配置服务器或主题")
@@ -113,9 +116,11 @@ public struct HistoryView: View {
             }
             ForEach(viewModel.groups) { group in
                 Section(group.url) {
+                    serverAllRow(group.url)
+                        .tag(HistoryViewModel.Selection.serverAll(group.url))
                     ForEach(group.topics) { entry in
                         topicRow(entry)
-                            .tag(entry.ref)
+                            .tag(HistoryViewModel.Selection.topic(entry.ref))
                     }
                 }
             }
@@ -143,27 +148,46 @@ public struct HistoryView: View {
         }
     }
 
+    /// First row of every server section: the merged timeline of that server's topics.
+    private func serverAllRow(_ serverURL: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "square.stack.3d.up")
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            Text("全部主题")
+                .lineLimit(1)
+            Spacer()
+            unreadBadge(viewModel.unread(forServer: serverURL))
+        }
+    }
+
     private func topicRow(_ entry: HistoryViewModel.TopicEntry) -> some View {
         HStack(spacing: 6) {
             Image(systemName: entry.iconSymbol ?? "bell")
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
-            Text(entry.ref.topic)
+            Text(entry.label)
                 .lineLimit(1)
+                .help(entry.label == entry.ref.topic ? Text(verbatim: "") : Text("主题 id：\(entry.ref.topic)"))
             Spacer()
-            if entry.unread > 0 {
-                Text("\(entry.unread)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(Color.accentColor))
-            }
+            unreadBadge(entry.unread)
         }
         .contextMenu {
             Button("从服务器退役…", role: .destructive) {
                 viewModel.confirmRetireTopic = entry.ref
             }
+        }
+    }
+
+    @ViewBuilder
+    private func unreadBadge(_ unread: Int) -> some View {
+        if unread > 0 {
+            Text("\(unread)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(Capsule().fill(Color.accentColor))
         }
     }
 
@@ -208,7 +232,10 @@ public struct HistoryView: View {
                 ScrollView {
                     LazyVStack(spacing: 8) {
                         ForEach(viewModel.globalResults) { hit in
-                            GlobalSearchResultRow(hit: hit) {
+                            GlobalSearchResultRow(
+                                hit: hit,
+                                topicLabel: viewModel.label(for: hit.topicRef)
+                            ) {
                                 viewModel.openGlobalResult(hit)
                             }
                         }
@@ -290,7 +317,7 @@ private struct TopicBrowserView: View {
         }
         .frame(width: Self.windowWidth, height: 420)
         .confirmationDialog(
-            "清空主题「\(pendingRetire?.topic ?? "")」的服务器缓存？",
+            "清空主题「\(pendingRetire.map { viewModel.label(for: TopicRef(serverURL: $0.serverURL, topic: $0.topic)) } ?? "")」的服务器缓存？",
             isPresented: Binding(
                 get: { pendingRetire != nil },
                 set: { if !$0 { pendingRetire = nil } }
@@ -328,11 +355,12 @@ private struct TopicBrowserView: View {
 
     @ViewBuilder
     private func row(_ entry: HistoryViewModel.ServerTopicEntry) -> some View {
-        HStack(spacing: 8) {
+        let label = viewModel.label(for: TopicRef(serverURL: entry.serverURL, topic: entry.topic))
+        return HStack(spacing: 8) {
             Image(systemName: statusIcon(entry.status))
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
-            Text(entry.topic)
+            Text(label)
                 .lineLimit(1)
             Spacer()
             trailing(entry)
@@ -389,13 +417,14 @@ private struct TopicBrowserView: View {
 /// One row in the global search result list; clicking it opens the hit's topic.
 private struct GlobalSearchResultRow: View {
     let hit: StoredMessage
+    let topicLabel: String
     let onOpen: () -> Void
 
     var body: some View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(hit.topic)
+                    Text(topicLabel)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Text(hit.serverURL)
@@ -433,6 +462,6 @@ private struct GlobalSearchResultRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("打开主题「\(hit.topic)」")
+        .help("打开主题「\(topicLabel)」")
     }
 }

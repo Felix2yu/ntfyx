@@ -36,7 +36,10 @@ struct NtfyxApp: App {
             NtfyxCommands()
         }
 
-        WindowGroup(id: "history") {
+        // Single-instance on purpose: every "通知历史" entry point funnels through
+        // openWindow(id: "history"), and a Window scene re-activates the existing window
+        // instead of stacking another copy of the same shared view model.
+        Window("通知历史", id: "history") {
             HistorySceneRoot()
                 .environment(env)
         }

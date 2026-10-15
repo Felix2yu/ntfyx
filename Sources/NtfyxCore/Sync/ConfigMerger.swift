@@ -114,6 +114,7 @@ public enum ConfigMerger {
         case (let local?, let cloud?):
             return SyncTopic(
                 name: local.name,
+                displayName: pick(base: base?.displayName, local: local.displayName, cloud: cloud.displayName, conflictResolution: conflictResolution),
                 iconSymbol: pick(base: base?.iconSymbol, local: local.iconSymbol, cloud: cloud.iconSymbol, conflictResolution: conflictResolution),
                 silent: pick(base: base?.silent, local: local.silent, cloud: cloud.silent, conflictResolution: conflictResolution),
                 clickUrl: pick(base: base?.clickUrl, local: local.clickUrl, cloud: cloud.clickUrl, conflictResolution: conflictResolution),
