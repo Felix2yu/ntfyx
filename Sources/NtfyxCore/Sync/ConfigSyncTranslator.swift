@@ -25,14 +25,12 @@ public enum KeychainTokenReader {
 /// Converts between the on-disk `AppConfig` and the cloud `SyncDocument`, and writes a
 /// merged document back the way this particular Mac keeps its configuration.
 public enum ConfigSyncTranslator {
-    /// Where a merged server's token ends up on this Mac. A server keeps the representation
-    /// it already had, so a sync never quietly moves a credential between the YAML file and
-    /// the Keychain.
+    /// A Keychain side effect a local write needs. Tokens never travel in the cloud file
+    /// (E2a), so the only possible actions are "leave the Keychain alone" and
+    /// "store this once (migration from inline YAML, or the one-time v1 cloud backfill)".
     public enum TokenPlacement: Equatable {
         case unchanged
         case keychain(String)
-        case removeFromKeychain
-        case inline(String?)
     }
 
     struct LocalWrite {
@@ -40,16 +38,13 @@ public enum ConfigSyncTranslator {
         var tokenPlacements: [String: TokenPlacement] = [:]
     }
 
-    /// The local file plus the token this Mac actually subscribes with — the cloud copy has
-    /// to carry that, or the other Macs get a server they cannot reach.
-    static func document(
-        from config: AppConfig,
-        effectiveToken: (String) -> String?
-    ) -> SyncDocument {
+    /// Builds the cloud document from the local file. It never carries a token, whether the
+    /// credential on this Mac lives in the Keychain or inline in the YAML: the cloud copy
+    /// is shared state and tokens stay per-Machine.
+    static func document(from config: AppConfig) -> SyncDocument {
         SyncDocument(servers: config.servers.map { server in
             SyncServer(
                 url: server.url,
-                token: effectiveToken(server.url),
                 topics: server.topics.map { topic in
                     SyncTopic(
                         name: topic.name,
@@ -124,27 +119,35 @@ public enum ConfigSyncTranslator {
             topics.append(merge(topic: synced, into: nil))
         }
 
+        // E2a token policy. Servers touched by a sync never keep a token in the YAML, and
+        // a token is only ever *added* to the Keychain, never removed or overwritten:
+        //
+        //   Keychain has one   → leave it alone (a v1 cloud token must not clobber it)
+        //   inline YAML token  → migrate it into the Keychain, clear the YAML field
+        //   v1 cloud token only → one-time Keychain backfill
+        //   nothing anywhere   → nothing to do (a new Mac types the token in once itself)
+        //
+        // `.failed` must never reach this point (the engine preflights and aborts the
+        // whole pass); leave the server untouched if it ever does.
         let yamlToken: String?
         let placement: TokenPlacement
         let existingToken = existing.flatMap { $0.token }
-        switch (keychainToken, existing?.token) {
-        case (.value(let stored), _):
-            // Keychain-backed: the credential stays out of the YAML, and the entry is only
-            // rewritten when the merged value differs from what is already stored.
-            yamlToken = existingToken
-            placement = stored == sync.token ? .unchanged
-                : (sync.token.map { TokenPlacement.keychain($0) } ?? .removeFromKeychain)
-        case (.absent, let inline?):
-            // Inline-backed: the YAML field carries it.
-            yamlToken = sync.token
-            placement = inline == sync.token ? .unchanged : .inline(sync.token)
-        case (.absent, nil):
-            // Nothing stored locally: a token arriving from the cloud belongs in the
-            // Keychain, not in a plaintext file.
+        switch keychainToken {
+        case .value:
             yamlToken = nil
-            placement = sync.token.map { TokenPlacement.keychain($0) } ?? .unchanged
-        case (.failed, _):
-            // The Keychain could not be read, so nothing about this server is touched.
+            placement = .unchanged
+        case .absent:
+            if let inline = existingToken {
+                yamlToken = nil
+                placement = .keychain(inline)
+            } else if let legacy = sync.token {
+                yamlToken = nil
+                placement = .keychain(legacy)
+            } else {
+                yamlToken = nil
+                placement = .unchanged
+            }
+        case .failed:
             yamlToken = existingToken
             placement = .unchanged
         }

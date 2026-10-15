@@ -37,10 +37,16 @@ final class ConfigSyncOrchestrationTests: XCTestCase {
     private func run(base: SyncDocument, local: AppConfig,
                      resolution: ConfigMerger.ConflictResolution = .stableFingerprint,
                      keychain: KeychainTokenReader.Outcome = .absent,
-                     save: @escaping (AppConfig) -> Void = { _ in }) throws -> ConfigSyncEngine.Outcome {
+                     save: @escaping (AppConfig) -> Void = { _ in },
+                     tokenSink: @escaping (String, ConfigSyncTranslator.TokenPlacement) -> Void = { _, _ in }) throws -> ConfigSyncEngine.Outcome {
         try ConfigSyncEngine.run(local: local, base: base, resolution: resolution, store: store,
                                  keychainToken: { _ in keychain }, saveLocal: fakeSave(save),
-                                 storeToken: { _, _ in })
+                                 storeToken: tokenSink)
+    }
+
+    private func writeRawCloud(_ text: String) throws {
+        try store.prepare()
+        try text.write(to: store.cloudFileURL, atomically: true, encoding: .utf8)
     }
 
     // MARK: - A single Mac joining
@@ -113,6 +119,92 @@ final class ConfigSyncOrchestrationTests: XCTestCase {
         }
         XCTAssertNil(saved)
         XCTAssertEqual(try store.readCloud(), base, "云端文件保持原样")
+    }
+
+    // MARK: - Token handling (E2a)
+
+    func testV1CloudTokenIsBackfilledIntoKeychainAndStrippedFromCloud() throws {
+        // A v1-era cloud file (plaintext token) landing on a Mac whose Keychain is empty:
+        // the credential is recovered into the Keychain once, the YAML stays token-free,
+        // and the shared file is rewritten as token-free v2.
+        try writeRawCloud("""
+        version: 1
+        servers:
+          - url: \(url)
+            token: v1-secret
+            topics:
+              - name: alerts
+        """)
+
+        var saved: AppConfig?
+        var placements: [String: ConfigSyncTranslator.TokenPlacement] = [:]
+        let outcome = try run(base: .empty, local: localConfig(["alerts"]), resolution: .preferLocal,
+                              save: { saved = $0 },
+                              tokenSink: { placements[$0] = $1 })
+
+        XCTAssertEqual(placements[url], .keychain("v1-secret"))
+        XCTAssertNil(saved?.servers.first?.token, "回填只进钥匙串，本地 YAML 不落令牌")
+        XCTAssertTrue(outcome.wroteCloud)
+
+        let cloudText = try String(contentsOf: store.cloudFileURL, encoding: .utf8)
+        XCTAssertFalse(cloudText.contains("v1-secret"))
+        XCTAssertFalse(cloudText.contains("token"))
+        XCTAssertTrue(cloudText.contains("version: 2"))
+
+        // Second pass with the token now in the Keychain: nothing moves anymore.
+        var secondSaved = false
+        var secondPlacements: [String: ConfigSyncTranslator.TokenPlacement] = [:]
+        let again = try run(base: outcome.merged, local: localConfig(["alerts"]),
+                            keychain: .value("v1-secret"),
+                            save: { _ in secondSaved = true },
+                            tokenSink: { secondPlacements[$0] = $1 })
+        XCTAssertFalse(again.wroteCloud)
+        XCTAssertFalse(again.wroteLocal)
+        XCTAssertFalse(secondSaved)
+        XCTAssertTrue(secondPlacements.isEmpty)
+    }
+
+    func testKeychainTokenIsNeverOverwrittenByALegacyCloudToken() throws {
+        try writeRawCloud("""
+        version: 1
+        servers:
+          - url: \(url)
+            token: stale-cloud-token
+            topics:
+              - name: alerts
+        """)
+
+        var placements: [String: ConfigSyncTranslator.TokenPlacement] = [:]
+        _ = try run(base: .empty, local: localConfig(["alerts"]), resolution: .preferLocal,
+                    keychain: .value("the-real-token"),
+                    tokenSink: { placements[$0] = $1 })
+        XCTAssertTrue(placements.isEmpty, "钥匙串已有值时，旧云令牌不得覆盖")
+    }
+
+    func testInlineYamlTokenMigratesToKeychainOnInboundChange() throws {
+        // First the shared file exists token-free (written by another Mac)…
+        try store.prepare()
+        try store.write(SyncDocument(servers: [syncServer(url, topics: [syncTopic("alerts"),
+                                                                         syncTopic("cloud-only")])]))
+        let base = try store.readCloud() ?? .empty
+
+        // …this Mac still carries its credential inline and also added a local topic.
+        let local = AppConfig(servers: [ServerConfig(
+            url: url, token: "inline-tk",
+            topics: [TopicConfig(name: "alerts"), TopicConfig(name: "local-only")]
+        )])
+
+        var saved: AppConfig?
+        var placements: [String: ConfigSyncTranslator.TokenPlacement] = [:]
+        let outcome = try run(base: base, local: local,
+                              save: { saved = $0 },
+                              tokenSink: { placements[$0] = $1 })
+
+        XCTAssertEqual(placements[url], .keychain("inline-tk"))
+        XCTAssertNil(saved?.servers.first?.token, "迁移后写回的 YAML 已清空令牌")
+        let cloudText = try String(contentsOf: store.cloudFileURL, encoding: .utf8)
+        XCTAssertFalse(cloudText.contains("inline-tk"))
+        XCTAssertTrue(outcome.wroteCloud)
     }
 
     // MARK: - Conflict copies

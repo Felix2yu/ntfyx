@@ -34,25 +34,28 @@ final class ConfigSyncTranslatorTests: XCTestCase {
 
     // MARK: - Publishing
 
-    func testPublishedDocumentCarriesTheTokenActuallyUsed() {
-        let published = ConfigSyncTranslator.document(from: machineLocalConfig(), effectiveToken: { _ in "kc-token" })
-        XCTAssertEqual(published.servers.first?.token, "kc-token")
+    func testPublishedDocumentNeverCarriesAToken() {
+        // Whether the credential sits inline in the YAML or nowhere at all, the cloud
+        // document is token-free (E2a).
+        let published = ConfigSyncTranslator.document(from: machineLocalConfig(token: "yaml-token"))
+        XCTAssertNil(published.servers.first?.token)
     }
 
     func testPortableFieldsArePublished() {
-        let published = ConfigSyncTranslator.document(from: machineLocalConfig(), effectiveToken: { _ in nil })
+        let published = ConfigSyncTranslator.document(from: machineLocalConfig())
         XCTAssertEqual(published.serverIndex[url]?.topicIndex["alerts"]?.clickUrl, .custom("myapp://x"))
         XCTAssertEqual(published.serverIndex[url]?.topicIndex["alerts"]?.silent, true)
     }
 
-    func testCloudTextExcludesMachineLocalSettings() throws {
-        let published = ConfigSyncTranslator.document(from: machineLocalConfig(), effectiveToken: { _ in "kc-token" })
+    func testCloudTextExcludesMachineLocalSettingsAndTokens() throws {
+        let published = ConfigSyncTranslator.document(from: machineLocalConfig(token: "yaml-token"))
         let text = try CloudConfigStore.encoded(published)
         XCTAssertFalse(text.contains("auto_run_script"))
         XCTAssertFalse(text.contains("icon_path"))
         XCTAssertFalse(text.contains("actions"))
         XCTAssertFalse(text.contains("local_server_port"))
-        XCTAssertTrue(text.contains("token: kc-token"), "令牌进云端是用户选定的行为")
+        XCTAssertFalse(text.contains("yaml-token"))
+        XCTAssertFalse(text.contains("token"), "令牌键本身也不应出现在云端文件中")
     }
 
     // MARK: - Applying a merged document
@@ -76,54 +79,69 @@ final class ConfigSyncTranslatorTests: XCTestCase {
         XCTAssertNil(topics.last?.iconPath, "云端来的主题不带本机路径")
     }
 
-    func testKeychainBackedServerNeverGetsTheTokenInYAML() {
-        let merged = SyncDocument(servers: [syncServer(url, token: "kc-token", topics: [syncTopic("alerts")])])
-        let write = apply(merged, to: machineLocalConfig(), keychain: .value("kc-token"))
-        XCTAssertEqual(write.config.servers.first?.token, "yaml-token", "钥匙串型服务器的 YAML 字段不动")
-        XCTAssertTrue(write.tokenPlacements.isEmpty, "令牌未变时不动钥匙串")
+    func testKeychainBackedServerIsLeftAloneAndYAMLIsCleared() {
+        // A Keychain credential is never overwritten — not even by a legacy v1 cloud
+        // token — and the synced YAML copy keeps no token at all.
+        let merged = SyncDocument(servers: [syncServer(url, token: "legacy-cloud", topics: [syncTopic("alerts")])])
+        let write = apply(merged, to: machineLocalConfig(token: "yaml-token"), keychain: .value("kc-token"))
+        XCTAssertNil(write.config.servers.first?.token, "参与同步的服务器 YAML 不再保留令牌")
+        XCTAssertTrue(write.tokenPlacements.isEmpty, "钥匙串已有值时绝不覆盖")
     }
 
-    func testRotatedAndRemovedTokensUpdateTheKeychain() {
-        let local = machineLocalConfig()
-        let rotated = SyncDocument(servers: [syncServer(url, token: "rotated", topics: [syncTopic("alerts")])])
-        XCTAssertEqual(apply(rotated, to: local, keychain: .value("kc-token")).tokenPlacements[url], .keychain("rotated"))
-
-        let removed = SyncDocument(servers: [syncServer(url, token: nil, topics: [syncTopic("alerts")])])
-        XCTAssertEqual(apply(removed, to: local, keychain: .value("kc-token")).tokenPlacements[url], .removeFromKeychain)
-    }
-
-    func testInlineBackedServerUpdatesTheYAMLField() {
-        let local = machineLocalConfig(token: "old", port: nil)
-        let merged = SyncDocument(servers: [syncServer(url, token: "new", topics: [syncTopic("alerts")])])
+    func testInlineTokenMigratesIntoTheKeychain() {
+        let local = machineLocalConfig(token: "inline-tk", port: nil)
+        // A v1 legacy token arriving in the same pass must not win over the Mac's own
+        // inline credential.
+        let merged = SyncDocument(servers: [syncServer(url, token: "legacy-cloud", topics: [syncTopic("alerts")])])
         let write = apply(merged, to: local, keychain: .absent)
-        XCTAssertEqual(write.config.servers.first?.token, "new")
-        XCTAssertEqual(write.tokenPlacements[url], .inline("new"))
+        XCTAssertEqual(write.tokenPlacements[url], .keychain("inline-tk"))
+        XCTAssertNil(write.config.servers.first?.token, "迁移后 YAML 字段清空")
     }
 
-    func testTokenForAnUnknownServerGoesToTheKeychainNotTheFile() {
+    func testLegacyCloudTokenBackfillsAnEmptyKeychainOnce() {
+        // A v1 cloud file arriving on a Mac with neither Keychain nor inline token:
+        // the credential is recovered into the Keychain, never into the plaintext file.
         let local = machineLocalConfig(token: nil, port: nil)
-        let merged = SyncDocument(servers: [syncServer(url, token: "from-cloud", topics: [syncTopic("alerts")])])
+        let merged = SyncDocument(servers: [syncServer(url, token: "from-v1-cloud", topics: [syncTopic("alerts")])])
         let write = apply(merged, to: local, keychain: .absent)
-        XCTAssertEqual(write.tokenPlacements[url], .keychain("from-cloud"))
+        XCTAssertEqual(write.tokenPlacements[url], .keychain("from-v1-cloud"))
+        XCTAssertNil(write.config.servers.first?.token)
+    }
+
+    func testV2CloudDocumentWithoutTokenAddsNoCredential() {
+        // The announced behaviour change: a Mac newly joining sync gets the subscription
+        // but has to paste the token in once itself.
+        let local = machineLocalConfig(token: nil, port: nil)
+        let merged = SyncDocument(servers: [syncServer(url, token: nil, topics: [syncTopic("alerts")])])
+        let write = apply(merged, to: local, keychain: .absent)
+        XCTAssertTrue(write.tokenPlacements.isEmpty)
+        XCTAssertNil(write.config.servers.first?.token)
+    }
+
+    func testLegacyTokenOnACloudOnlyServerGoesToTheKeychain() {
+        let merged = SyncDocument(servers: [syncServer(url, token: "from-v1-cloud", topics: [syncTopic("alerts")])])
+        let write = apply(merged, to: AppConfig(servers: [], localServerPort: nil), keychain: .absent)
+        XCTAssertEqual(write.tokenPlacements[url], .keychain("from-v1-cloud"))
         XCTAssertNil(write.config.servers.first?.token, "不要把凭据落进明文文件")
     }
 
     func testUnreadableKeychainLeavesTheServerUntouched() {
-        // A failed read must not be mistaken for "no token": that would delete the
-        // credential on this Mac and publish its removal to everyone else.
-        let merged = SyncDocument(servers: [syncServer(url, token: "kc-token", topics: [syncTopic("alerts")])])
+        // Defence in depth (the engine aborts the pass before this point): a failed read
+        // must not be mistaken for "no token".
+        let merged = SyncDocument(servers: [syncServer(url, token: "legacy-cloud", topics: [syncTopic("alerts")])])
         let write = apply(merged, to: machineLocalConfig(), keychain: .failed)
         XCTAssertNil(write.tokenPlacements[url])
         XCTAssertEqual(write.config.servers.first?.token, "yaml-token")
     }
 
     func testApplyingTheMergedDocumentIsIdentityForPublishing() {
-        let merged = SyncDocument(servers: [syncServer(url, token: "kc-token",
+        let merged = SyncDocument(servers: [syncServer(url, token: "legacy-cloud",
                                                        topics: [syncTopic("alerts", iconSymbol: "bell"), syncTopic("new-from-cloud")])])
         .canonicalized
         let write = apply(merged, to: machineLocalConfig(), keychain: .value("kc-token"))
-        let republished = ConfigSyncTranslator.document(from: write.config, effectiveToken: { _ in "kc-token" })
+        let republished = ConfigSyncTranslator.document(from: write.config)
 
-        XCTAssertEqual(republished, merged, "应用合并结果后再导出应完全一致，否则同步永不收敛")
+        XCTAssertEqual(republished, merged, "应用合并结果后再导出应一致（令牌不参与同一性），否则同步永不收敛")
+        XCTAssertNil(republished.servers.first?.token)
     }
 }

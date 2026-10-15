@@ -1,6 +1,6 @@
 import Foundation
 
-public struct NotificationAction: Codable, Sendable {
+public struct NotificationAction: Codable, Equatable, Sendable {
     var title: String
     var type: String      // "script", "view", "shortcut", or "applescript"
     var path: String?     // for scripts and applescript files
@@ -21,7 +21,7 @@ public struct NotificationAction: Codable, Sendable {
     }
 }
 
-public struct TopicConfig: Codable, Sendable {
+public struct TopicConfig: Codable, Equatable, Sendable {
     let name: String
     let iconPath: String?
     let iconSymbol: String?
@@ -93,7 +93,7 @@ public enum ClickUrlConfig: Codable, Equatable, Sendable {
     }
 }
 
-public struct ServerConfig: Codable, Sendable {
+public struct ServerConfig: Codable, Equatable, Sendable {
     let url: String
     let token: String?
     let topics: [TopicConfig]
@@ -160,7 +160,7 @@ public struct ServerConfig: Codable, Sendable {
     }
 }
 
-public struct AppConfig: Codable, Sendable {
+public struct AppConfig: Codable, Equatable, Sendable {
     public let servers: [ServerConfig]
     public let localServerPort: UInt16?
 

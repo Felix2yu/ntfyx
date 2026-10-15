@@ -143,7 +143,7 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.borderless)
 
-                Text("同步文件里包含服务器令牌，iCloud Drive 上的这份内容是明文。脚本、图标路径、通知动作和本地服务端口只留在本机，不参与同步。")
+                Text("同步文件不包含服务器令牌：每台 Mac 的令牌只存在各自的钥匙串里，新加入同步的 Mac 需自行粘贴一次。脚本、图标路径、通知动作和本地服务端口也只留在本机，不参与同步。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

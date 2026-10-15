@@ -56,11 +56,13 @@ public final class CloudConfigStore: @unchecked Sendable {
     static let fileName = "config.yml"
     static let folderName = "ntfyx"
 
-    /// Written into every cloud file: the tokens it carries are the reason it must not be
-    /// handed to anyone.
+    /// Written into every cloud file. Since E2a the file carries no server tokens — each
+    /// Mac keeps its own credential in its Keychain, and a newly joining Mac types the
+    /// token in once. The warning stays because the subscription topology itself is
+    /// still private.
     static let header = [
         "# ntfyx 同步配置（由 ntfyx 生成，请勿手工编辑）",
-        "# 注意：本文件包含服务器令牌，iCloud Drive 中的内容是明文。",
+        "# 本文件不含服务器令牌：令牌仅保存在每台 Mac 自己的钥匙串中，新设备需自行输入一次。",
     ]
 
     private let fileManager = FileManager.default
@@ -221,7 +223,8 @@ public final class CloudConfigStore: @unchecked Sendable {
         coordinator.coordinate(writingItemAt: cloudFileURL, options: .forReplacing, error: &coordinationError) { target in
             do {
                 try text.write(to: target, atomically: true, encoding: .utf8)
-                // The file holds server tokens; keep it out of other users' reach.
+                // The subscription topology is still private even without tokens; keep
+                // the file out of other users' reach.
                 try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
             } catch {
                 writeError = error

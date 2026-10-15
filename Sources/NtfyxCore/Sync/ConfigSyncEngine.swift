@@ -30,20 +30,8 @@ public enum ConfigSyncEngine {
         },
         storeToken: (String, ConfigSyncTranslator.TokenPlacement) -> Void = ConfigSyncEngine.writeToken
     ) throws -> Outcome {
-        var tokenUnreadable = false
-        let effectiveToken: (String) -> String? = { serverURL in
-            switch keychainToken(serverURL) {
-            case .value(let token):
-                return token
-            case .absent:
-                return config.server(forURL: serverURL)?.token
-            case .failed:
-                tokenUnreadable = true
-                return config.server(forURL: serverURL)?.token
-            }
-        }
-        let localDocument = ConfigSyncTranslator.document(from: config, effectiveToken: effectiveToken)
-        guard !tokenUnreadable else { throw ConfigSyncError.keychainUnreadable }
+        // Cloud documents are token-free: publishing needs no Keychain read.
+        let localDocument = ConfigSyncTranslator.document(from: config)
 
         let cloudDocument = try store.readCloud() ?? .empty
         var merged = ConfigMerger.merge(base: base, local: localDocument, cloud: cloudDocument, conflictResolution: resolution)
@@ -61,15 +49,39 @@ public enum ConfigSyncEngine {
             }
         }
 
+        // A Keychain read that failed must not be mistaken for "no token stored" while the
+        // local write decides placements; that would migrate or backfill credentials based
+        // on a guess. Abort before touching either side, same as the preflight used to do
+        // during document publishing.
+        for server in merged.servers where keychainToken(server.url) == .failed {
+            throw ConfigSyncError.keychainUnreadable
+        }
+
+        // Cloud-facing copy: defence in depth that a decoded v1 token can never be written
+        // back to the shared file. The token-carrying `merged` below still drives the
+        // one-time Keychain backfill in `applyToLocal`.
+        let cloudReady = merged.strippingLegacyTokens
+
         var wroteCloud = false
-        if merged != cloudDocument {
-            try store.write(merged)
+        if cloudReady != cloudDocument {
+            precondition(
+                cloudReady.servers.allSatisfy { $0.token == nil },
+                "cloud configuration must never contain a server token"
+            )
+            try store.write(cloudReady)
             wroteCloud = true
         }
 
+        // Plan the local write even when the documents already converge: a v1 token
+        // backfill or an inline→Keychain migration changes no subscription but still has
+        // to land, so the gate is the resulting file plus the Keychain side effects —
+        // not the token-free document comparison above.
+        let planned = ConfigSyncTranslator.localWrite(
+            from: merged, preserving: config, keychainToken: keychainToken
+        )
         var wroteLocal = false
-        if localDocument != merged {
-            try applyToLocal(merged, preserving: config, keychainToken: keychainToken, saveLocal: saveLocal, storeToken: storeToken)
+        if planned.config != config || !planned.tokenPlacements.isEmpty {
+            try apply(planned, saveLocal: saveLocal, storeToken: storeToken)
             wroteLocal = true
         }
 
@@ -78,7 +90,7 @@ public enum ConfigSyncEngine {
         }
 
         return Outcome(
-            merged: merged,
+            merged: cloudReady,
             cloudFingerprint: store.cloudFingerprint(),
             wroteCloud: wroteCloud,
             wroteLocal: wroteLocal,
@@ -95,23 +107,17 @@ public enum ConfigSyncEngine {
         switch placement {
         case .keychain(let token):
             try? KeychainHelper.saveToken(token, forServer: serverURL)
-        case .removeFromKeychain:
-            try? KeychainHelper.deleteToken(forServer: serverURL)
-        case .inline, .unchanged:
-            break  // carried by the YAML field the local write produces
+        case .unchanged:
+            break
         }
     }
 
-    /// Writes the merged document into this Mac's own file, keeping the token representation
-    /// this machine already used for each server.
-    static func applyToLocal(
-        _ merged: SyncDocument,
-        preserving local: AppConfig,
-        keychainToken: (String) -> KeychainTokenReader.Outcome,
+    /// Persists a planned local write: Keychain side effects first, then the YAML file.
+    static func apply(
+        _ write: ConfigSyncTranslator.LocalWrite,
         saveLocal: (AppConfig) throws -> Void,
         storeToken: (String, ConfigSyncTranslator.TokenPlacement) -> Void
     ) throws {
-        let write = ConfigSyncTranslator.localWrite(from: merged, preserving: local, keychainToken: keychainToken)
         for (serverURL, placement) in write.tokenPlacements {
             storeToken(serverURL, placement)
         }

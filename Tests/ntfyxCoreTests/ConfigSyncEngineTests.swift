@@ -1,4 +1,5 @@
 import XCTest
+import Yams
 @testable import NtfyxCore
 
 /// Three-way merge of the cloud configuration. The two properties that matter most are
@@ -173,11 +174,26 @@ final class ConfigSyncEngineTests: XCTestCase {
         XCTAssertEqual(unordered.canonicalized.serverIndex["https://z.example"]?.topics.map(\.name), ["alpha", "zebra"])
     }
 
-    func testTokenChangesPropagateLikeAnyOtherField() {
+    // MARK: - Tokens (E2a)
+
+    func testDocumentsDifferingOnlyInTokenAreEqual() {
+        let without = doc([server("https://a.example", topics: [topic("alerts")])])
+        let withLegacy = doc([server("https://a.example", token: "v1-token", topics: [topic("alerts")])])
+        XCTAssertEqual(without, withLegacy, "解码出的 v1 令牌不参与文档同一性")
+    }
+
+    func testMergeCarriesLegacyCloudTokenTransientlyButIgnoresItAsAField() {
         let base = doc([server("https://a.example", token: "old", topics: [topic("alerts")])])
-        let local = doc([server("https://a.example", token: "old", topics: [topic("alerts")])])
+        let local = doc([server("https://a.example", topics: [topic("alerts")])])
         let cloud = doc([server("https://a.example", token: "rotated", topics: [topic("alerts")])])
 
-        XCTAssertEqual(ConfigMerger.merge(base: base, local: local, cloud: cloud).servers.first?.token, "rotated")
+        let merged = ConfigMerger.merge(base: base, local: local, cloud: cloud)
+        // The v1 token only rides along for the one-time Keychain backfill…
+        XCTAssertEqual(merged.servers.first?.token, "rotated")
+        // …it is not a conflict dimension, and it never survives encoding.
+        let encoded = try? YAMLEncoder().encode(merged)
+        XCTAssertNotNil(encoded)
+        XCTAssertFalse(encoded?.contains("rotated") ?? true)
+        XCTAssertFalse(encoded?.contains("token") ?? true)
     }
 }

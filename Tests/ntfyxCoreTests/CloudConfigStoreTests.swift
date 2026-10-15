@@ -1,4 +1,5 @@
 import XCTest
+import Yams
 @testable import NtfyxCore
 
 /// The iCloud Drive file itself: reading a placeholder that has not been downloaded,
@@ -73,12 +74,48 @@ final class CloudConfigStoreTests: XCTestCase {
         XCTAssertEqual(try store.readCloud()?.serverIndex[url]?.topics.map(\.name), ["alerts", "builds"])
     }
 
-    func testFileHeaderWarnsAboutPlaintextTokens() throws {
+    func testWrittenFileNeverContainsAToken() throws {
+        // The sample carries a token the way an in-memory document can while merging a v1
+        // cloud file; the bytes on disk must be token-free regardless.
+        try store.prepare()
+        try store.write(sampleDocument())
+        let text = try String(contentsOf: store.cloudFileURL, encoding: .utf8)
+        XCTAssertFalse(text.contains("tk"))
+        XCTAssertFalse(text.contains("token"))
+        XCTAssertEqual(try store.readCloud()?.serverIndex[url]?.token, nil)
+        let rawVersion = try YAMLDecoder().decode(SyncDocument.self, from: text).version
+        XCTAssertEqual(rawVersion, 2)
+    }
+
+    func testV1FileStillDecodesForOneTimeKeychainBackfill() throws {
+        let v1 = """
+        version: 1
+        servers:
+          - url: \(url)
+            token: v1-secret
+            topics:
+              - name: alerts
+        """
+        let decoded = try CloudConfigStore.decode(v1)
+        XCTAssertEqual(decoded.version, 1)
+        XCTAssertEqual(decoded.serverIndex[url]?.token, "v1-secret", "v1 令牌临时可读，供一次性回填钥匙串")
+
+        // Re-encoding upgrades to v2 and drops the token.
+        let reencoded = try CloudConfigStore.encoded(decoded)
+        XCTAssertTrue(reencoded.contains("version: 2"))
+        XCTAssertFalse(reencoded.contains("v1-secret"))
+        XCTAssertFalse(reencoded.contains("token"))
+        let reread = try CloudConfigStore.decode(reencoded)
+        XCTAssertNil(reread.serverIndex[url]?.token)
+    }
+
+    func testFileHeaderStatesTokensAreKeptInKeychain() throws {
         try store.prepare()
         try store.write(sampleDocument())
         let text = try String(contentsOf: store.cloudFileURL, encoding: .utf8)
         XCTAssertTrue(text.hasPrefix("# ntfyx 同步配置"))
-        XCTAssertTrue(text.contains("明文"))
+        XCTAssertTrue(text.contains("不含服务器令牌"))
+        XCTAssertTrue(text.contains("钥匙串"))
     }
 
     func testRewritingTheSameDocumentKeepsTheContents() throws {

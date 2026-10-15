@@ -5,7 +5,12 @@ import Foundation
 /// actions, `local_server_port` — stay out, because a path that only exists on one Mac is
 /// a broken subscription on the next one.
 public struct SyncDocument: Codable, Equatable, Sendable {
-    public static let currentVersion = 1
+    /// v2: server tokens no longer travel in the cloud file (E2a). A v1 client reading
+    /// this version hits its existing `unsupportedVersion` guard and refuses to rewrite it.
+    public static let currentVersion = 2
+    /// Oldest cloud file version this build still accepts; its tokens are read once for
+    /// the one-time Keychain backfill and never written back.
+    public static let minimumSupportedVersion = 1
 
     var version: Int
     public var servers: [SyncServer]
@@ -57,15 +62,49 @@ public struct SyncDocument: Codable, Equatable, Sendable {
     var pruningEmptyServers: SyncDocument {
         SyncDocument(servers: servers.filter { !$0.topics.isEmpty })
     }
+
+    /// The exact document minus any decoded v1 tokens. Used for cloud writes and for the
+    /// persisted merge ancestor; the token-carrying copy still feeds the local Keychain
+    /// backfill in the same pass.
+    var strippingLegacyTokens: SyncDocument {
+        SyncDocument(
+            version: version,
+            servers: servers.map { server in
+                var copy = server
+                copy.token = nil
+                return copy
+            }
+        )
+    }
 }
 
 public struct SyncServer: Codable, Equatable, Sendable {
     var url: String
+    /// Legacy v1 cloud token. v2 documents never encode it; while a decoded v1 file is
+    /// being merged it is kept here transiently so `localWrite` can backfill this Mac's
+    /// Keychain once. It is deliberately excluded from `Equatable`, canonical identity
+    /// and the three-way merge.
     var token: String?
     var topics: [SyncTopic]
     var allowedSchemes: [String]?
     var allowedDomains: [String]?
     var fetchMissed: Bool?
+
+    init(
+        url: String,
+        token: String? = nil,
+        topics: [SyncTopic],
+        allowedSchemes: [String]? = nil,
+        allowedDomains: [String]? = nil,
+        fetchMissed: Bool? = nil
+    ) {
+        self.url = url
+        self.token = token
+        self.topics = topics
+        self.allowedSchemes = allowedSchemes
+        self.allowedDomains = allowedDomains
+        self.fetchMissed = fetchMissed
+    }
 
     enum CodingKeys: String, CodingKey {
         case url
@@ -74,6 +113,37 @@ public struct SyncServer: Codable, Equatable, Sendable {
         case allowedSchemes = "allowed_schemes"
         case allowedDomains = "allowed_domains"
         case fetchMissed = "fetch_missed"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        url = try container.decode(String.self, forKey: .url)
+        // Decode-only: accepted from v1 cloud files for the one-time Keychain backfill.
+        token = try container.decodeIfPresent(String.self, forKey: .token)
+        topics = try container.decodeIfPresent([SyncTopic].self, forKey: .topics) ?? []
+        allowedSchemes = try container.decodeIfPresent([String].self, forKey: .allowedSchemes)
+        allowedDomains = try container.decodeIfPresent([String].self, forKey: .allowedDomains)
+        fetchMissed = try container.decodeIfPresent(Bool.self, forKey: .fetchMissed)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(url, forKey: .url)
+        // `token` is intentionally never written: credentials live in each Mac's Keychain.
+        try container.encode(topics, forKey: .topics)
+        try container.encodeIfPresent(allowedSchemes, forKey: .allowedSchemes)
+        try container.encodeIfPresent(allowedDomains, forKey: .allowedDomains)
+        try container.encodeIfPresent(fetchMissed, forKey: .fetchMissed)
+    }
+
+    /// Token is part of neither identity nor convergence: two documents that differ only
+    /// in a decoded v1 token are the same cloud configuration.
+    public static func == (lhs: SyncServer, rhs: SyncServer) -> Bool {
+        lhs.url == rhs.url
+            && lhs.topics == rhs.topics
+            && lhs.allowedSchemes == rhs.allowedSchemes
+            && lhs.allowedDomains == rhs.allowedDomains
+            && lhs.fetchMissed == rhs.fetchMissed
     }
 
     var topicIndex: [String: SyncTopic] {

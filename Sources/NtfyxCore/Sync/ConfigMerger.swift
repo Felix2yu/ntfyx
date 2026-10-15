@@ -68,7 +68,9 @@ public enum ConfigMerger {
             )
             return SyncServer(
                 url: local.url,
-                token: pick(base: base?.token, local: local.token, cloud: cloud.token, conflictResolution: conflictResolution),
+                // Tokens are not a merge dimension (E2a). A v1 cloud file's token only
+                // rides along here so the local write can backfill this Mac's Keychain once.
+                token: cloud.token,
                 topics: topics,
                 allowedSchemes: pick(base: base?.allowedSchemes, local: local.allowedSchemes, cloud: cloud.allowedSchemes, conflictResolution: conflictResolution),
                 allowedDomains: pick(base: base?.allowedDomains, local: local.allowedDomains, cloud: cloud.allowedDomains, conflictResolution: conflictResolution),
