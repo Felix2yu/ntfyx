@@ -29,10 +29,7 @@ final class AppEnvironment {
     private(set) var historyVM: HistoryViewModel?
 
     private init() {
-        configSync = ConfigSyncService(
-            configStore: configStore,
-            backgroundTasks: backgroundTasks
-        )
+        configSync = ConfigSyncService(configStore: configStore)
     }
 
     /// Loads config, opens the history store and starts the watchers/sync facades.

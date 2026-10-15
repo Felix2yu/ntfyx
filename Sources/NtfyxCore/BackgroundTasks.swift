@@ -15,7 +15,6 @@ public final class BackgroundTasks {
     /// Well-known activity identifiers, prefixed with the app's bundle identifier.
     public enum Identifier {
         public static let historyRetention = AppConstants.bundleIdentifier + ".history-retention"
-        public static let configSyncPoll = AppConstants.bundleIdentifier + ".config-sync-poll"
     }
 
     /// The OS-facing surface of one repeating activity. Exposed internal so tests can

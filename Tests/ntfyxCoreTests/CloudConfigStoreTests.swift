@@ -2,6 +2,17 @@ import XCTest
 import Yams
 @testable import NtfyxCore
 
+/// Locked mutable state for @Sendable test seams.
+private final class NSLockBox<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: T
+    init(_ value: T) { stored = value }
+    var value: T {
+        get { lock.lock(); defer { lock.unlock() }; return stored }
+        set { lock.lock(); stored = newValue; lock.unlock() }
+    }
+}
+
 /// The iCloud Drive file itself: reading a placeholder that has not been downloaded,
 /// refusing a format this build cannot write back, and recognising the conflict copies the
 /// daemon leaves behind. Everything here runs against a temporary folder — the iCloud branch
@@ -62,7 +73,6 @@ final class CloudConfigStoreTests: XCTestCase {
 
     func testReadBeforeTheFileExistsReturnsNil() throws {
         XCTAssertNil(try store.readCloud())
-        XCTAssertNil(store.cloudFingerprint())
     }
 
     func testWriteThenReadRoundTrips() throws {
@@ -119,16 +129,12 @@ final class CloudConfigStoreTests: XCTestCase {
     }
 
     func testRewritingTheSameDocumentKeepsTheContents() throws {
-        // What keeps the OS-scheduled 60s poll from doing useless work is that the service
-        // records the fingerprint right *after* it writes: an atomic rewrite always
-        // refreshes mtime.
         try store.prepare()
         let document = sampleDocument()
         try store.write(document)
         try store.write(document)
 
         XCTAssertEqual(try store.readCloud(), document)
-        XCTAssertNotNil(store.cloudFingerprint())
     }
 
     func testEncodingIsByteStableForTheSameDocument() throws {
@@ -166,51 +172,82 @@ final class CloudConfigStoreTests: XCTestCase {
         }
     }
 
-    // MARK: - Conflict copies
+    // MARK: - Conflict versions (NSFileVersion seam)
 
-    private func writeStrayFile(named name: String) throws {
-        try "servers: []".write(toFile: directory.appendingPathComponent(name).path, atomically: true, encoding: .utf8)
+    private func writeStrayFile(named name: String, contents: String = "servers: []\n") throws {
+        try contents.write(toFile: directory.appendingPathComponent(name).path, atomically: true, encoding: .utf8)
     }
 
-    func testConflictCopyNamingIsRecognisedInBothLanguages() {
-        let english = "config conflicting copy 1 of Macmini.yml"
-        let chinese = "config 冲突副本 MacBook Pro.yml"
-        XCTAssertTrue(CloudConfigStore.isConflictCopy(english))
-        XCTAssertTrue(CloudConfigStore.isConflictCopy(chinese))
-        XCTAssertFalse(CloudConfigStore.isConflictCopy(CloudConfigStore.fileName))
-        XCTAssertFalse(CloudConfigStore.isConflictCopy("notes.txt"))
-        XCTAssertFalse(CloudConfigStore.isConflictCopy("other.yml"))
-    }
-
-    func testConflictCopiesAreListedAndRemovedWithoutTouchingTheLiveFile() throws {
+    func testConflictCopiesComeFromTheInjectedVersionLister() throws {
         try store.prepare()
         try store.write(sampleDocument())
+        let v1 = directory.appendingPathComponent("config (a conflict).yml")
+        let v2 = directory.appendingPathComponent("config (another conflict).yml")
+        try writeStrayFile(named: v1.lastPathComponent)
+        try writeStrayFile(named: v2.lastPathComponent)
+
+        let liveURL = store.cloudFileURL
+        store.listConflictVersions = { live in
+            XCTAssertEqual(live, liveURL)
+            return [v2, v1]
+        }
+
+        XCTAssertEqual(store.conflictCopies(), [v1, v2], "返回结果按路径稳定排序")
+    }
+
+    func testConflictCopiesEmptyWhenLiveFileMissing() {
+        let called = NSLockBox(false)
+        store.listConflictVersions = { _ in called.value = true; return [] }
+        XCTAssertTrue(store.conflictCopies().isEmpty)
+        XCTAssertFalse(called.value, "live 文件尚不存在时不解析冲突版本")
+    }
+
+    func testFilenameSniffingIsGone() throws {
+        // Files the old string match used to call conflicts must now be invisible:
+        // NSFileVersion is the only source of conflict URLs.
+        try store.prepare()
         try writeStrayFile(named: "config conflicting copy 1 of Macmini.yml")
         try writeStrayFile(named: "config 冲突副本 MacBook Pro.yml")
         try writeStrayFile(named: "notes.txt")
-
-        let found = store.conflictCopies().map(\.lastPathComponent).sorted()
-        XCTAssertEqual(found, ["config 冲突副本 MacBook Pro.yml", "config conflicting copy 1 of Macmini.yml"].sorted())
-
-        store.deleteConflictCopies(found.map { directory.appendingPathComponent($0) })
-        XCTAssertEqual(store.conflictCopies().count, 0)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: store.cloudFileURL.path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("notes.txt").path))
+        XCTAssertTrue(store.conflictCopies().isEmpty)
     }
 
-    func testUnmergeableConflictCopyStaysOnDisk() throws {
-        // The service deletes a copy only after its contents reached the merged result;
+    func testConflictVersionsAreRemovedWithoutTouchingTheLiveFile() throws {
+        try store.prepare()
+        try store.write(sampleDocument())
+        let stray = directory.appendingPathComponent("config (a conflict).yml")
+        try writeStrayFile(named: stray.lastPathComponent)
+
+        let removed = NSLockBox<[(URL, URL)]>([])
+        store.removeConflictVersion = { live, versionURL in
+            removed.value.append((live, versionURL))
+            try? FileManager.default.removeItem(at: versionURL)
+        }
+        store.listConflictVersions = { _ in [stray] }
+
+        store.deleteConflictCopies(store.conflictCopies())
+        XCTAssertEqual(removed.value.map(\.1), [stray])
+        XCTAssertEqual(removed.value.map(\.0), [store.cloudFileURL])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stray.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: store.cloudFileURL.path))
+    }
+
+    func testUnmergeableConflictVersionStaysOnDisk() throws {
+        // The engine deletes a version only after its contents reached the merged result;
         // one this build cannot read has to survive for the next pass.
         try store.prepare()
-        try "version: 99\nservers: []\n".write(toFile: directory.appendingPathComponent("config conflicting copy.yml").path,
-                                               atomically: true, encoding: .utf8)
+        try store.write(sampleDocument())
+        let stray = directory.appendingPathComponent("config (a conflict).yml")
+        try writeStrayFile(named: stray.lastPathComponent, contents: "version: 99\nservers: []\n")
+        store.listConflictVersions = { _ in [stray] }
+
         let copy = store.conflictCopies().first
-        XCTAssertNotNil(copy)
-        XCTAssertThrowsError(try store.read(at: copy!)) { error in
+        XCTAssertEqual(copy, stray)
+        XCTAssertThrowsError(try store.read(at: stray)) { error in
             guard case ConfigSyncError.unsupportedVersion(99) = error else {
-                return XCTFail("应拒绝更高版本的冲突副本，实际为 \(error)")
+                return XCTFail("应拒绝更高版本的冲突版本，实际为 \(error)")
             }
         }
-        XCTAssertTrue(FileManager.default.fileExists(atPath: copy!.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: stray.path))
     }
 }

@@ -9,9 +9,6 @@ import Foundation
 public enum ConfigSyncEngine {
     public struct Outcome: Sendable {
         public var merged: SyncDocument
-        /// Read after the push, never before: an atomic rewrite always refreshes mtime, so
-        /// a marker captured earlier would make the next poll see our own write as a remote edit.
-        public var cloudFingerprint: String?
         public var wroteCloud = false
         public var wroteLocal = false
         public var conflictCopiesMerged = 0
@@ -91,7 +88,6 @@ public enum ConfigSyncEngine {
 
         return Outcome(
             merged: cloudReady,
-            cloudFingerprint: store.cloudFingerprint(),
             wroteCloud: wroteCloud,
             wroteLocal: wroteLocal,
             conflictCopiesMerged: mergedConflicts.count,

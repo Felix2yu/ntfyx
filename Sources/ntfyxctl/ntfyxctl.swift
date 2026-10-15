@@ -151,7 +151,6 @@ struct CLITool {
                     store: store
                 )
                 state.base = outcome.merged
-                state.lastCloudFingerprint = outcome.cloudFingerprint
                 state.lastSyncedAt = Date()
                 SyncStateStore.save(state)
 

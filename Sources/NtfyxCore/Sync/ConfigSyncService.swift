@@ -25,21 +25,10 @@ public final class ConfigSyncService {
 
     private(set) public var status: Status = .off
 
-    /// Repeating OS activity that polls the cloud copy (audit F3). The system scheduler's
-    /// floor is 60 s, so the former 45 s in-process sleep loop retires; the system adds
-    /// energy-aware coalescing on top.
-    private static let pollActivityInterval: TimeInterval = 60
-    private static let pollActivityTolerance: TimeInterval = 15
-
     private let coordinator: ConfigSyncCoordinator
-    private let backgroundTasks: BackgroundTasks
     private var statusTask: Task<Void, Never>?
 
-    public init(
-        configStore: ConfigStore = .shared,
-        backgroundTasks: BackgroundTasks = .shared
-    ) {
-        self.backgroundTasks = backgroundTasks
+    public init(configStore: ConfigStore = .shared) {
         let snapshot: @Sendable @MainActor () -> ConfigSyncCoordinator.LocalSnapshot = {
             ConfigSyncCoordinator.LocalSnapshot(
                 config: configStore.config,
@@ -77,10 +66,8 @@ public final class ConfigSyncService {
         guard enabled != isEnabled else { return }
         UserDefaults.standard.set(enabled, forKey: AppSettings.iCloudSyncEnabledKey)
         if enabled {
-            registerPollActivity()
             Task { await coordinator.start() }
         } else {
-            unregisterPollActivity()
             Task { await coordinator.stop() }
             status = .off
             Log.info("配置同步已关闭")
@@ -100,33 +87,15 @@ public final class ConfigSyncService {
 
     // MARK: - Lifecycle
 
-    /// Called once the service has a loaded configuration.
+    /// Called once the service has a loaded configuration. Cloud changes arrive through
+    /// the event-driven `CloudChangeObserver` owned by the coordinator — no poll activity
+    /// is registered (E2b).
     func start() {
-        if isEnabled {
-            registerPollActivity()
-        }
         Task { await coordinator.start() }
     }
 
     func stop() {
-        unregisterPollActivity()
         Task { await coordinator.stop() }
-    }
-
-    /// Registers the OS-scheduled cloud poll; replacing a previous registration is
-    /// handled inside `BackgroundTasks` (the old activity is invalidated first).
-    private func registerPollActivity() {
-        backgroundTasks.register(
-            identifier: BackgroundTasks.Identifier.configSyncPoll,
-            interval: Self.pollActivityInterval,
-            tolerance: Self.pollActivityTolerance
-        ) { [coordinator] in
-            await coordinator.pollCloud()
-        }
-    }
-
-    private func unregisterPollActivity() {
-        backgroundTasks.unregister(identifier: BackgroundTasks.Identifier.configSyncPoll)
     }
 
     // MARK: - Triggers

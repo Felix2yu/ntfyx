@@ -27,15 +27,19 @@ actor ConfigSyncCoordinator {
 
     let store = CloudConfigStore()
     private let localSnapshot: @Sendable @MainActor () -> LocalSnapshot
-    private var state = SyncState(base: nil, lastCloudFingerprint: nil, lastSyncedAt: nil)
-    private var pendingLocalChange: Task<Void, Never>?
+    private var state = SyncState(base: nil, lastSyncedAt: nil)
+    private var pendingChange: Task<Void, Never>?
     private var isSyncing = false
-    private var lastCycleSucceeded = true
     private var isRunning = false
 
-    /// A hand-edit of the config file lands here one save at a time; a second later the
-    /// watcher is quiet and one merge covers the whole edit.
-    static let localChangeDebounce: TimeInterval = 2
+    /// Event-driven cloud watching (NSMetadataQuery in iCloud Drive, directory events for
+    /// custom folders / as a fallback). Owned only while sync is enabled.
+    private var cloudObserver: CloudChangeObserver?
+    private var cloudObserverTask: Task<Void, Never>?
+
+    /// Both a hand-edit and a burst of cloud notifications land here; after the quiet
+    /// period one merge covers the whole change.
+    static let changeDebounce: TimeInterval = 2
 
     init(localSnapshot: @escaping @Sendable @MainActor () -> LocalSnapshot) {
         self.localSnapshot = localSnapshot
@@ -65,10 +69,10 @@ actor ConfigSyncCoordinator {
         store.directoryOverride = directoryOverride.isEmpty ? nil : directoryOverride
         state = SyncStateStore.load()
         isRunning = true
+        startCloudObserver()
         emit(.waiting)
-        // Cloud polling is driven by the OS-scheduled repeating activity registered by
-        // `ConfigSyncService` (audit F3); the first merge still goes half a second in,
-        // letting the app finish launching (and load its config) beforehand.
+        // The first merge still goes half a second in, letting the app finish launching
+        // (and load its config) beforehand.
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: 500_000_000)
             await self?.synchronize()
@@ -78,47 +82,76 @@ actor ConfigSyncCoordinator {
 
     func stop() {
         isRunning = false
-        pendingLocalChange?.cancel()
-        pendingLocalChange = nil
+        pendingChange?.cancel()
+        pendingChange = nil
+        stopCloudObserver()
     }
 
-    /// A new sync folder has no agreed ancestor on this Mac; the merge starts over.
+    /// A new sync folder has no agreed ancestor on this Mac; the merge starts over and the
+    /// cloud observer re-subscribes to the new location.
     func resetDirectory(_ path: String) {
         store.directoryOverride = path.isEmpty ? nil : path
         state.base = nil
-        state.lastCloudFingerprint = nil
         SyncStateStore.save(state)
+        guard isRunning else { return }
+        stopCloudObserver()
+        startCloudObserver()
     }
 
     // MARK: - Triggers
 
     /// ConfigWatcher's signal: the file on disk changed, so the cloud copy may need it.
     func noteLocalConfigChanged() {
+        scheduleChange()
+    }
+
+    /// CloudChangeObserver's signal: the shared file or a conflict version moved; the
+    /// observer has already coalesced the metadata burst, the actor-side debounce makes
+    /// local+cloud edits share one merge.
+    private func noteCloudChanged() {
+        scheduleChange()
+    }
+
+    private func scheduleChange() {
         guard isEnabled else { return }
-        pendingLocalChange?.cancel()
-        pendingLocalChange = Task { [weak self] in
+        pendingChange?.cancel()
+        pendingChange = Task { [weak self] in
             try? await Task.sleep(
-                nanoseconds: UInt64(Self.localChangeDebounce * 1_000_000_000)
+                nanoseconds: UInt64(Self.changeDebounce * 1_000_000_000)
             )
             guard !Task.isCancelled else { return }
             await self?.synchronize()
         }
     }
 
-    /// "立即同步" — ignores the debounce and the change markers.
+    /// "立即同步" — ignores the debounce.
     func syncNow() {
-        pendingLocalChange?.cancel()
+        pendingChange?.cancel()
         Task { [weak self] in await self?.synchronize() }
     }
 
-    /// One OS-scheduled cloud poll (audit F3): driven from the facade's repeating
-    /// `NSBackgroundActivityScheduler` instead of an in-process sleep loop.
-    func pollCloud() {
-        guard isEnabled, !isSyncing else { return }
-        // Nothing moved and the last pass finished cleanly: a merge would be pure rework.
-        // After a failed pass the poll is the retry, so it must not be skipped.
-        if lastCycleSucceeded, state.lastCloudFingerprint == store.cloudFingerprint() { return }
-        Task { [weak self] in await self?.synchronize() }
+    // MARK: - Cloud observation
+
+    private func startCloudObserver() {
+        let observer = CloudChangeObserver(
+            rootDirectory: store.rootDirectory,
+            isICloud: store.usesICloudDrive
+        )
+        cloudObserver = observer
+        cloudObserverTask = Task { [weak self] in
+            for await _ in observer.changes {
+                guard !Task.isCancelled else { return }
+                await self?.noteCloudChanged()
+            }
+        }
+        observer.start()
+    }
+
+    private func stopCloudObserver() {
+        cloudObserverTask?.cancel()
+        cloudObserverTask = nil
+        cloudObserver?.stop()
+        cloudObserver = nil
     }
 
     // MARK: - The cycle
@@ -130,7 +163,6 @@ actor ConfigSyncCoordinator {
         guard snapshot.isDefaultPath else {
             // A `serve --config <PATH>` instance owns a file this feature was never meant
             // to publish; syncing it would push one machine's private config onto everyone.
-            lastCycleSucceeded = false
             emit(.failed("配置同步只作用于默认配置文件 \(ConfigFile.defaultConfigPath)"))
             return
         }
@@ -163,14 +195,13 @@ actor ConfigSyncCoordinator {
             }
 
             state.base = outcome.merged
-            state.lastCloudFingerprint = outcome.cloudFingerprint
             state.lastSyncedAt = Date()
             SyncStateStore.save(state)
-            lastCycleSucceeded = true
             emit(.synced(state.lastSyncedAt ?? Date()))
             Log.info("配置同步完成：\(outcome.servers) 个服务器、\(outcome.topics) 个主题")
         } catch {
-            lastCycleSucceeded = false
+            // No retry timer: a still-present placeholder drives another metadata update
+            // when it finishes downloading, and the user can always use "立即同步".
             let message = error.localizedDescription
             Log.error("配置同步失败：\(message)")
             emit(.failed(message))

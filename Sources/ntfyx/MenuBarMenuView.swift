@@ -53,7 +53,7 @@ struct MenuBarMenuView: View {
             Button("立即同步配置") {
                 sync.syncNow()
             }
-            .help("与 iCloud Drive 中的配置立即合并；平时由配置改动与定时轮询触发")
+            .help("与 iCloud Drive 中的配置立即合并；平时由配置改动与云端变更事件触发")
         }
 
         Divider()

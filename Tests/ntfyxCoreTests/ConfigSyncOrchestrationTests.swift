@@ -68,11 +68,12 @@ final class ConfigSyncOrchestrationTests: XCTestCase {
         XCTAssertFalse(again.wroteLocal)
     }
 
-    func testFingerprintDescribesTheFileJustWritten() throws {
-        // The service stores this value and the poll compares it on the next tick; if it
-        // described the pre-write file, every poll would redo the whole merge.
-        let outcome = try run(base: .empty, local: localConfig(["alerts"]), resolution: .preferLocal)
-        XCTAssertEqual(store.cloudFingerprint(), outcome.cloudFingerprint)
+    func testConvergedPassProducesNoDiffOnEitherSide() throws {
+        // E2b removed the poll fingerprint entirely; idempotence now rests on the engine
+        // comparing the token-free documents: a converged state rewrites neither file.
+        let first = try run(base: .empty, local: localConfig(["alerts"]), resolution: .preferLocal)
+        let again = try run(base: first.merged, local: localConfig(["alerts"]))
+        XCTAssertEqual(again.merged, first.merged)
     }
 
     // MARK: - Other device's edits
@@ -209,24 +210,32 @@ final class ConfigSyncOrchestrationTests: XCTestCase {
 
     // MARK: - Conflict copies
 
-    func testReadableConflictCopyIsMergedThenRemoved() throws {
+    func testReadableConflictVersionIsMergedThenRemoved() throws {
         let base = try run(base: .empty, local: localConfig(["alerts"]), resolution: .preferLocal).merged
         let copy = SyncDocument(servers: [SyncServer(url: "https://c.example", topics: [syncTopic("via-conflict")])])
-        let copyURL = directory.appendingPathComponent("config 冲突副本 Macmini.yml")
+        let copyURL = directory.appendingPathComponent("config (a conflict version).yml")
         try CloudConfigStore.encoded(copy).write(to: copyURL, atomically: true, encoding: .utf8)
+        // The NSFileVersion seam: a version URL exists on disk only until it is resolved.
+        store.listConflictVersions = { _ in
+            FileManager.default.fileExists(atPath: copyURL.path) ? [copyURL] : []
+        }
 
         let outcome = try run(base: base, local: localConfig(["alerts"]))
 
         XCTAssertEqual(outcome.conflictCopiesMerged, 1)
         XCTAssertEqual(outcome.merged.serverIndex["https://c.example"]?.topics.map(\.name), ["via-conflict"],
-                       "冲突副本里的订阅不能丢")
-        XCTAssertTrue(store.conflictCopies().isEmpty, "合并过的副本才被清理")
+                       "冲突版本里的订阅不能丢")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: copyURL.path))
+        XCTAssertTrue(store.conflictCopies().isEmpty, "合并过的版本才被清理")
     }
 
-    func testUnreadableConflictCopyStaysForTheNextPass() throws {
+    func testUnreadableConflictVersionStaysForTheNextPass() throws {
         let base = try run(base: .empty, local: localConfig(["alerts"]), resolution: .preferLocal).merged
-        let copyURL = directory.appendingPathComponent("config conflicting copy.yml")
+        let copyURL = directory.appendingPathComponent("config (a conflict version).yml")
         try "version: 99\nservers: []\n".write(to: copyURL, atomically: true, encoding: .utf8)
+        store.listConflictVersions = { _ in
+            FileManager.default.fileExists(atPath: copyURL.path) ? [copyURL] : []
+        }
 
         let outcome = try run(base: base, local: localConfig(["alerts"]))
 

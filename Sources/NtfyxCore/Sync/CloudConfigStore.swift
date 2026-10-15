@@ -146,15 +146,6 @@ public final class CloudConfigStore: @unchecked Sendable {
         }
     }
 
-    /// Size plus modification date: FileProvider materialises a download without a
-    /// filesystem event anyone can rely on, so the service polls this marker instead.
-    func cloudFingerprint() -> String? {
-        guard let attributes = try? fileManager.attributesOfItem(atPath: cloudFileURL.path) else { return nil }
-        let size = (attributes[.size] as? Int) ?? 0
-        let modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
-        return "\(size):\(Int(modified))"
-    }
-
     // MARK: - Reading
 
     /// nil means the cloud file is not there yet — this is the first Mac to sync.
@@ -244,26 +235,41 @@ public final class CloudConfigStore: @unchecked Sendable {
         return header.joined(separator: "\n") + "\n" + body
     }
 
-    // MARK: - Conflict copies
+    // MARK: - Conflict versions
 
-    /// iCloud Drive settles concurrent writes by leaving the loser beside the file with
-    /// "conflicting copy" / "冲突副本" in its name. Those carry real edits, so the merge reads
-    /// them as further cloud versions, then the leftovers are removed once merged.
-    public func conflictCopies() -> [URL] {
-        guard let names = try? fileManager.contentsOfDirectory(atPath: rootDirectory) else { return [] }
-        let root = URL(fileURLWithPath: rootDirectory)
-        return names.filter { Self.isConflictCopy($0) }.sorted().map { root.appendingPathComponent($0) }
+    /// Lists the unresolved iCloud conflict versions of the shared file.
+    ///
+    /// `NSFileVersion` is the locale-independent source of truth: the old
+    /// "conflicting copy"/"冲突副本" filename sniffing misclassified user files and missed
+    /// localised suffixes. The closure is a seam so tests can drive the merge with plain
+    /// files instead of synthesising real FileProvider conflicts.
+    var listConflictVersions: @Sendable (URL) -> [URL] = { fileURL in
+        (NSFileVersion.unresolvedConflictVersionsOfItem(at: fileURL) ?? [])
+            .map(\.url)
+            .filter { $0 != fileURL }
     }
 
-    static func isConflictCopy(_ name: String) -> Bool {
-        guard name != fileName, name.hasPrefix("config"), name.contains(".yml") else { return false }
-        let lowered = name.lowercased()
-        return lowered.contains("conflict") || name.contains("冲突副本")
+    /// Removes one resolved conflict version, preferring the `NSFileVersion` API for a
+    /// ubiquitous item and falling back to a plain delete (custom folders / tests).
+    var removeConflictVersion: @Sendable (URL, URL) -> Void = { fileURL, versionURL in
+        if let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: fileURL),
+           let version = versions.first(where: { $0.url == versionURL }) {
+            try? version.remove()
+        } else {
+            try? FileManager.default.removeItem(at: versionURL)
+        }
+    }
+
+    /// Conflict versions carry real edits, so the merge reads them as further cloud
+    /// versions, then the resolved versions are removed once merged.
+    public func conflictCopies() -> [URL] {
+        guard fileManager.fileExists(atPath: cloudFileURL.path) else { return [] }
+        return listConflictVersions(cloudFileURL).sorted { $0.path < $1.path }
     }
 
     func deleteConflictCopies(_ urls: [URL]) {
         for url in urls {
-            try? fileManager.removeItem(at: url)
+            removeConflictVersion(cloudFileURL, url)
         }
     }
 }

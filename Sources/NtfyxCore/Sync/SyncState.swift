@@ -1,11 +1,10 @@
 import Foundation
 
 /// What one Mac remembers about the shared configuration between launches: the state every
-/// device last agreed on (the merge ancestor), and the marker that says whether the cloud
-/// file moved since the previous pass.
+/// device last agreed on (the merge ancestor). Cloud-side movement is delivered by
+/// `CloudChangeObserver` events, so no poll fingerprint is kept anymore (E2b).
 public struct SyncState: Codable, Equatable, Sendable {
     public var base: SyncDocument?
-    public var lastCloudFingerprint: String?
     public var lastSyncedAt: Date?
 }
 
@@ -37,7 +36,7 @@ public enum SyncStateStore {
     public static func load() -> SyncState {
         guard let data = try? Data(contentsOf: fileURL),
               let state = try? JSONDecoder().decode(SyncState.self, from: data) else {
-            return SyncState(base: nil, lastCloudFingerprint: nil, lastSyncedAt: nil)
+            return SyncState(base: nil, lastSyncedAt: nil)
         }
         return state
     }
