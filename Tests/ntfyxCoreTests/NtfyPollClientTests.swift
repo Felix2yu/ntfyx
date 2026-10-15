@@ -90,7 +90,7 @@ final class NtfyPollClientTests: XCTestCase {
             }
 
             XCTAssertEqual(result.messageCount, total)
-            XCTAssertEqual(result.newestMessage?.time, 1_700_000_000 + total - 1)
+            XCTAssertEqual(result.newestEvent?.time, 1_700_000_000 + total - 1)
         }
 
         XCTAssertEqual(box.sizes, [200, 200, 50])
@@ -100,7 +100,9 @@ final class NtfyPollClientTests: XCTestCase {
     }
 
     /// Delete and clear events ride along in message order, so an event still arrives after
-    /// the message it targets and the store applies the removal to a row that exists.
+    /// the message it targets and the store applies the removal to a row that exists. They also
+    /// carry the cursor: the newest event is the trailing `message_clear`, not the message
+    /// before it, or every poll would replay that event forever.
     func testActionEventsShareTheBatchWithTheirPredecessors() async throws {
         let box = BatchBox()
 
@@ -121,6 +123,7 @@ final class NtfyPollClientTests: XCTestCase {
 
             XCTAssertEqual(result.messageCount, 2)
             XCTAssertEqual(result.actionEventCount, 2)
+            XCTAssertEqual(result.newestEvent?.id, "evt2")
         }
 
         XCTAssertEqual(box.sizes, [4])

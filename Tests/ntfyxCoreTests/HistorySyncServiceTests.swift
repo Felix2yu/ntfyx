@@ -10,11 +10,24 @@ final class HistorySyncServiceTests: XCTestCase {
         var attempts = 0
     }
 
+    /// The `since` values the sync asked the poll client for, in order.
+    private final class CursorBox: @unchecked Sendable {
+        var values: [String] = []
+    }
+
     private func makeMessage(id: String) -> NtfyMessage {
         NtfyMessage(
             id: id, time: Int(Date().timeIntervalSince1970), event: "message", topic: "alerts",
             message: "body", title: nil, priority: nil, tags: nil, click: nil, actions: nil,
             attachment: nil, contentType: nil, sequenceId: nil
+        )
+    }
+
+    private func makeActionEvent(id: String, sequenceID: String, event: String) -> NtfyMessage {
+        NtfyMessage(
+            id: id, time: Int(Date().timeIntervalSince1970), event: event, topic: "alerts",
+            message: nil, title: nil, priority: nil, tags: nil, click: nil, actions: nil,
+            attachment: nil, contentType: nil, sequenceId: sequenceID
         )
     }
 
@@ -47,7 +60,7 @@ final class HistorySyncServiceTests: XCTestCase {
             try await onEvents([message])
             var result = NtfyPollClient.PollResult()
             result.messageCount = 1
-            result.newestMessage = message
+            result.newestEvent = message
             return result
         }
 
@@ -94,5 +107,36 @@ final class HistorySyncServiceTests: XCTestCase {
         }
         try? await Task.sleep(nanoseconds: 1_500_000_000)
         XCTAssertEqual(box.attempts, 1)
+    }
+
+    /// Opening a topic polls `since=<cursor>`, and the server replays every cached row behind
+    /// that row — clear/delete events included, since they are cached like any message. A cursor
+    /// that stops at the newest message therefore re-delivers the read mark on every click;
+    /// the sync state has to advance past the trailing action event.
+    func testCursorAdvancesPastTrailingActionEvents() async throws {
+        let (service, store, ref) = try makeFixture()
+        let cursors = CursorBox()
+        let message = makeMessage(id: "m1")
+        let clear = makeActionEvent(id: "evt1", sequenceID: "m1", event: NtfyMessage.clearEvent)
+        service.poll = { _, _, since, _, onEvents in
+            cursors.values.append(since)
+            guard cursors.values.count == 1 else {
+                return NtfyPollClient.PollResult()  // nothing left behind this cursor
+            }
+            try await onEvents([message, clear])
+            var result = NtfyPollClient.PollResult()
+            result.messageCount = 1
+            result.actionEventCount = 1
+            result.newestEvent = clear
+            return result
+        }
+
+        await service.syncIncremental(ref)
+        let info = try await store.latestSyncedInfo(serverURL: "https://s.example", topic: "alerts")
+        XCTAssertEqual(info?.id, "evt1", "the cursor must pass the message_clear event")
+
+        await service.syncIncremental(ref)
+        XCTAssertEqual(cursors.values.count, 2)
+        XCTAssertEqual(cursors.values.last, "evt1", "the second open must not resume at the message")
     }
 }

@@ -487,18 +487,39 @@ final class MessageStoreTests: XCTestCase {
         XCTAssertEqual(unread, 1)
     }
 
-    /// A clear event replayed by `since=` must not duplicate or resurrect anything.
+    /// A clear event replayed by `since=` must not duplicate or resurrect anything, and it must
+    /// not re-mark a message that is already read — that is the write the user pays for on
+    /// every topic open when the cursor stops at the newest message.
     func testClearEventIsIdempotent() async throws {
         try await store.upsert(makeMessage(id: "m1", sequenceId: "seq-1"), serverURL: "https://s.example")
         let event = makeMessage(id: "evt", sequenceId: "seq-1", event: NtfyMessage.clearEvent)
 
-        try await store.applyActionEvent(event, serverURL: "https://s.example")
-        try await store.applyActionEvent(event, serverURL: "https://s.example")
+        let first = try await store.applyActionEvent(event, serverURL: "https://s.example")
+        let replay = try await store.applyActionEvent(event, serverURL: "https://s.example")
+        XCTAssertTrue(first)
+        XCTAssertFalse(replay, "a replayed clear event must affect no row")
 
         let messages = try await store.messages(serverURL: "https://s.example", topic: "alerts")
         XCTAssertEqual(messages.count, 1)
         XCTAssertTrue(messages[0].isRead)
         XCTAssertFalse(messages[0].isDeleted)
+    }
+
+    /// Same for `message_delete`: re-applying a replayed event would refresh `deleted_at`
+    /// and keep pushing the tombstone's expiry out.
+    func testDeleteEventIsIdempotent() async throws {
+        try await store.upsert(makeMessage(id: "m1", sequenceId: "seq-1"), serverURL: "https://s.example")
+        let event = makeMessage(id: "evt", sequenceId: "seq-1", event: NtfyMessage.deleteEvent)
+
+        let first = try await store.applyActionEvent(event, serverURL: "https://s.example")
+        let replay = try await store.applyActionEvent(event, serverURL: "https://s.example")
+        XCTAssertTrue(first)
+        XCTAssertFalse(replay, "a replayed delete event must affect no row")
+
+        let rowStillThere = try await store.rawRowExists(
+            serverURL: "https://s.example", topic: "alerts", messageID: "m1"
+        )
+        XCTAssertTrue(rowStillThere)
     }
 
     // MARK: - Action event target lookup
