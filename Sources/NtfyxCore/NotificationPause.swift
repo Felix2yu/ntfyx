@@ -22,6 +22,14 @@ public final class NotificationPause {
         set { defaults.set(newValue, forKey: Self.key) }
     }
 
+    /// Sets the banner pause state explicitly (used by the menu toggle and AppIntents).
+    /// Returns the resulting state, which equals `paused`.
+    @discardableResult
+    public func setPaused(_ paused: Bool) -> Bool {
+        isPaused = paused
+        return paused
+    }
+
     @discardableResult
     public func toggle() -> Bool {
         isPaused.toggle()

@@ -35,6 +35,17 @@ final class NotificationPauseTests: XCTestCase {
         XCTAssertFalse(pause.isPaused)
     }
 
+    func testSetPausedWritesExplicitStateAndReturnsIt() {
+        let pause = makePause()
+        XCTAssertTrue(pause.setPaused(true))
+        XCTAssertTrue(pause.isPaused)
+        XCTAssertFalse(pause.setPaused(false))
+        XCTAssertFalse(pause.isPaused)
+        // Setting the same state is a harmless no-op rather than a toggle.
+        XCTAssertFalse(pause.setPaused(false))
+        XCTAssertFalse(pause.isPaused)
+    }
+
     func testPauseSurvivesRelaunch() {
         makePause().isPaused = true
         // A fresh instance over the same defaults models an app relaunch.
