@@ -234,6 +234,53 @@ final class MessageStoreTests: XCTestCase {
         XCTAssertFalse(others[0].isRead)
     }
 
+    // MARK: - 滚动即已读（批量落库）
+
+    func testMarkReadBatchReportsOnlyTheRowsThatActuallyFlipped() async throws {
+        try await store.upsert(makeMessage(id: "a1", time: 1_000), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "a2", time: 2_000), serverURL: "https://s.example")
+        try await store.markRead(true, serverURL: "https://s.example", topic: "alerts", messageID: "a2")
+        let rows = try await store.messages(serverURL: "https://s.example", topic: "alerts")
+
+        let flipped = try await store.markReadBatch(rows)
+
+        XCTAssertEqual(flipped.map(\.message.id), ["a1"], "已读的行不该被再报一次，否则横幅和请求都白跑")
+        let unreadAfterBatch = try await totalUnread()
+        XCTAssertEqual(unreadAfterBatch, 0)
+    }
+
+    /// A scroll only ever shows a few messages; advancing the read watermark to `MAX(time)`
+    /// would swallow the whole unseen backlog on the next replay.
+    func testMarkReadBatchLeavesTheWatermarkAlone() async throws {
+        try await store.upsert(makeMessage(id: "seen", time: 2_000), serverURL: "https://s.example")
+        let rows = try await store.messages(serverURL: "https://s.example", topic: "alerts")
+        _ = try await store.markReadBatch(rows)
+
+        try await backfill(makeMessage(id: "unseen", time: 1_000), serverURL: "https://s.example")
+
+        let stored = try await store.messages(serverURL: "https://s.example", topic: "alerts")
+        XCTAssertEqual(stored.first { $0.message.id == "unseen" }?.isRead, false,
+                       "滚过一条不能把没看过的历史也算已读")
+        let unread = try await totalUnread()
+        XCTAssertEqual(unread, 1)
+    }
+
+    func testMarkReadBatchSpansTopicsAndIgnoresEmptyEntries() async throws {
+        try await store.upsert(makeMessage(id: "b1", topic: "builds", time: 1_000), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "a1", time: 1_000), serverURL: "https://other.example")
+
+        let empty = try await store.markReadBatch([])
+        XCTAssertEqual(empty.count, 0)
+
+        let mergedRows = try await store.messages(serverURL: "https://s.example", topic: nil)
+        let otherRows = try await store.messages(serverURL: "https://other.example", topic: nil)
+        let flipped = try await store.markReadBatch(mergedRows + otherRows)
+
+        XCTAssertEqual(Set(flipped.map(\.message.id)), ["b1", "a1"])
+        let unread = try await totalUnread()
+        XCTAssertEqual(unread, 0)
+    }
+
     // MARK: - Read watermark
 
     /// Replays the way `applyBatch` does it: the row comes from the server's cache, so the

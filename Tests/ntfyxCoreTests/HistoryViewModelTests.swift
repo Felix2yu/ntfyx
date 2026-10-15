@@ -608,6 +608,87 @@ final class HistoryViewModelTests: XCTestCase {
         XCTAssertEqual(vm.messages.count, 2)
     }
 
+    // MARK: - 滚动即已读
+
+    /// 滚过的卡片攒成一批发作：一次落库、一次服务器请求、列表不重建（已读行仍留在原处），
+    /// 只有侧栏与角标跟着降下来。
+    func testScrollReadBatchesWritesAndServerRequests() async throws {
+        let store = try MessageStore.inMemory()
+        for id in ["m1", "m2", "m3"] {
+            try await store.upsert(makeMessage(id: id, topic: "alpha"), serverURL: "https://s.example")
+        }
+        let sync = HistorySyncService(store: store)
+        sync.poll = { _, _, _, _, _ in NtfyPollClient.PollResult() }
+        let vm = HistoryViewModel(store: store, syncService: sync)
+        vm.serverMarkReadSession = markReadMockSession(status: 200)
+
+        let ref = TopicRef(serverURL: "https://s.example", topic: "alpha")
+        vm.onlyUnread = true
+        vm.selectTopic(ref)
+        try await waitUntil { vm.messages.count == 3 }
+
+        for row in vm.messages { vm.markReadOnScroll(row) }
+        try await waitUntil { vm.messages.allSatisfy(\.isRead) }
+
+        XCTAssertEqual(vm.messages.count, 3, "已读的行仍留在列表里，滚动位置不能被抽走")
+        let counts = try await store.unreadCountsByTopic()
+        XCTAssertEqual(counts[ref] ?? 0, 0, "库里也必须是已读")
+
+        // 三条消息 = 一条请求（sequenceIDsPerRequest = 50，所以三条落在同一个 chunk）。
+        // 请求在落库之后才发出，所以要等它落地，不能直接读快照。
+        try await waitUntil { !MarkReadMockProtocol.paths.filter({ $0.hasPrefix("alpha/") }).isEmpty }
+        let mine = MarkReadMockProtocol.paths.filter { $0.hasPrefix("alpha/") }
+        XCTAssertEqual(mine.count, 1, "滚动不应该每条发一次请求：\(mine)")
+        let issued = mine[0].dropFirst("alpha/".count).dropLast("/read".count)
+        XCTAssertTrue(mine[0].hasSuffix("/read"), mine.description)
+        XCTAssertEqual(Set(issued.split(separator: ",").map(String.init)), ["m1", "m2", "m3"])
+
+        // 再滚一次同一屏：全是已读，既不再落库也不再请求。
+        for row in vm.messages { vm.markReadOnScroll(row) }
+        try await Task.sleep(nanoseconds: 400_000_000)  // 比 settle 窗口长一点
+        XCTAssertEqual(MarkReadMockProtocol.paths.filter { $0.hasPrefix("alpha/") }.count, 1,
+                       "重复滚过不能重复请求：\(MarkReadMockProtocol.paths)")
+    }
+
+    /// The badge and the sidebar follow a scroll-read even though the list itself is untouched.
+    func testScrollReadUpdatesCountsWithoutRebuildingTheList() async throws {
+        let store = try MessageStore.inMemory()
+        try await store.upsert(makeMessage(id: "m1", topic: "alpha"), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "m2", topic: "beta"), serverURL: "https://s.example")
+        let sync = HistorySyncService(store: store)
+        sync.poll = { _, _, _, _, _ in NtfyPollClient.PollResult() }
+        let (src, configStore) = try configuredStore(topics: ["alpha", "beta"])
+        defer { try? FileManager.default.removeItem(atPath: src) }
+        let vm = HistoryViewModel(store: store, syncService: sync, configStore: configStore)
+        vm.serverMarkReadSession = markReadMockSession(status: 200)
+
+        vm.onlyUnread = true
+        vm.selectTopic(TopicRef(serverURL: "https://s.example", topic: "alpha"))
+        try await waitUntil { vm.messages.count == 1 }
+        vm.refreshSidebar()
+        try await waitUntil { vm.totalUnread == 2 }
+
+        vm.markReadOnScroll(vm.messages[0])
+        try await waitUntil { vm.totalUnread == 1 }
+
+        XCTAssertEqual(vm.messages.count, 1, "本主题的列表内容不变")
+        XCTAssertEqual(vm.unread(for: TopicRef(serverURL: "https://s.example", topic: "alpha")), 0)
+        XCTAssertEqual(vm.unread(for: TopicRef(serverURL: "https://s.example", topic: "beta")), 1)
+    }
+
+    private func configuredStore(topics: [String]) throws -> (path: String, configStore: ConfigStore) {
+        let src = tempConfigPath()
+        let yaml = """
+        servers:
+          - url: https://s.example
+            topics:
+        """ + topics.map { "\n              - name: \($0)" }.joined()
+        try yaml.write(toFile: src, atomically: true, encoding: .utf8)
+        let configStore = ConfigStore()
+        try configStore.load(from: src)
+        return (src, configStore)
+    }
+
     private func waitUntil(timeoutSeconds: TimeInterval = 5, _ condition: @MainActor () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         while !condition() {
