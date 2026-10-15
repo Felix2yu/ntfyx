@@ -284,6 +284,38 @@ final class HistoryViewModelTests: XCTestCase {
         return (src, configStore)
     }
 
+    /// The sidebar and every other surface name a topic by its 备注; the id stays the key
+    /// for unread counts and history lookups.
+    func testSidebarShowsTheTopicNoteAndKeepsTheIDAsKey() async throws {
+        let src = tempConfigPath()
+        defer { try? FileManager.default.removeItem(atPath: src) }
+        let yaml = """
+        servers:
+          - url: https://s.example
+            topics:
+              - name: nightly-backup
+                display_name: 夜间备份
+              - name: alerts
+        """
+        try yaml.write(toFile: src, atomically: true, encoding: .utf8)
+        let configStore = ConfigStore()
+        try configStore.load(from: src)
+
+        let store = try MessageStore.inMemory()
+        let vm = HistoryViewModel(store: store, syncService: HistorySyncService(store: store), configStore: configStore)
+
+        vm.refreshSidebar()
+        try await waitUntil { vm.groups.first?.topics.count == 2 }
+
+        XCTAssertEqual(vm.groups.first?.topics.map(\.label), ["夜间备份", "alerts"])
+        XCTAssertEqual(vm.groups.first?.topics.map(\.id), [
+            "https://s.example|nightly-backup", "https://s.example|alerts"
+        ], "身份仍然是服务器上的英文主题名")
+        XCTAssertEqual(vm.label(for: TopicRef(serverURL: "https://s.example", topic: "nightly-backup")), "夜间备份")
+        // A topic this server has no config for (unsubscribed, orphans) keeps its id.
+        XCTAssertEqual(vm.label(for: TopicRef(serverURL: "https://other.example", topic: "nightly-backup")), "nightly-backup")
+    }
+
     /// The purge the browser's trash button triggers: the server DELETE runs, then the
     /// re-queried list must no longer contain the retired topic.
     func testRetireTopicPurgesServerAndDropsRow() async throws {
@@ -478,6 +510,102 @@ final class HistoryViewModelTests: XCTestCase {
         vm.searchText = "beta"
         try await waitUntil { vm.messages.count == 1 }
         XCTAssertEqual(vm.messages.first?.message.id, "a2")
+    }
+
+    // MARK: - Merged per-server view
+
+    /// The 全部主题 row has to show one server's topics as a single timeline, newest first,
+    /// without pulling another server's rows in.
+    func testSelectServerAllMergesEveryTopicOfThatServer() async throws {
+        let store = try MessageStore.inMemory()
+        try await store.upsert(makeMessage(id: "a1", topic: "alpha", time: 1), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "b1", topic: "beta", time: 2), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "o1", topic: "alpha", time: 3), serverURL: "https://other.example")
+
+        let vm = HistoryViewModel(store: store, syncService: HistorySyncService(store: store))
+        vm.selectServerAll("https://s.example")
+        try await waitUntil { vm.messages.count == 2 }
+
+        XCTAssertEqual(vm.messages.map(\.id), ["b1", "a1"])
+        XCTAssertEqual(vm.messages.map(\.topic), ["beta", "alpha"])
+        XCTAssertEqual(vm.selectedServerAll, "https://s.example")
+        XCTAssertNil(vm.selectedTopic)
+    }
+
+    /// A page boundary in the merged list lands wherever it lands, so "load older" must keep
+    /// walking the same (time, rowID) cursor across topics instead of per topic.
+    func testServerAllLoadOlderPagesAcrossTopics() async throws {
+        let store = try MessageStore.inMemory()
+        let events = (0..<101).map {
+            makeMessage(id: "m\($0)", topic: $0 % 2 == 0 ? "alpha" : "beta", time: 1_000 + $0)
+        }
+        _ = try await store.applyBatch(events, serverURL: "https://s.example")
+
+        let vm = HistoryViewModel(store: store, syncService: HistorySyncService(store: store))
+        vm.selectServerAll("https://s.example")
+        try await waitUntil { vm.messages.count == HistoryViewModel.pageSize }
+        XCTAssertTrue(vm.hasMoreMessages)
+
+        vm.loadOlder()
+        try await waitUntil { vm.messages.count == 101 }
+        XCTAssertEqual(Set(vm.messages.map(\.id)), Set(events.map(\.id)))
+        XCTAssertFalse(vm.hasMoreMessages)
+    }
+
+    func testUnreadForServerSumsOnlyItsOwnTopics() async throws {
+        let store = try MessageStore.inMemory()
+        try await store.upsert(makeMessage(id: "a1", topic: "alpha"), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "a2", topic: "alpha"), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "b1", topic: "beta"), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "o1", topic: "gamma"), serverURL: "https://other.example")
+
+        let vm = HistoryViewModel(store: store, syncService: HistorySyncService(store: store))
+        try await waitUntil { vm.totalUnread == 4 }
+        XCTAssertEqual(vm.unread(forServer: "https://s.example"), 3)
+        XCTAssertEqual(vm.unread(forServer: "https://other.example"), 1)
+    }
+
+    /// The merged view's 全部已读 covers every topic of that server; other servers keep their
+    /// unread rows both locally and on their own hosts.
+    func testMarkServerAllReadClearsThatServerOnly() async throws {
+        let store = try MessageStore.inMemory()
+        try await store.upsert(makeMessage(id: "a1", topic: "alpha"), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "b1", topic: "beta"), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "o1", topic: "gamma"), serverURL: "https://other.example")
+
+        let vm = HistoryViewModel(store: store, syncService: HistorySyncService(store: store))
+        vm.serverMarkReadSession = markReadMockSession(status: 200)
+        try await waitUntil { vm.totalUnread == 3 }
+
+        vm.markServerAllRead(serverURL: "https://s.example")
+        try await waitUntil { vm.unread(forServer: "https://s.example") == 0 }
+
+        XCTAssertEqual(vm.unread(forServer: "https://other.example"), 1)
+        let syncedTopics = Set(MarkReadMockProtocol.paths.map { $0.components(separatedBy: "/").first ?? "" })
+        XCTAssertEqual(syncedTopics, ["alpha", "beta"])
+    }
+
+    /// Live traffic lands on whichever topic it belongs to; the merged list has to follow
+    /// changes of any of its server's topics, and ignore another server's.
+    func testStoreChangeReloadsMergedMessagesForItsOwnServer() async throws {
+        let store = try MessageStore.inMemory()
+        let sync = HistorySyncService(store: store)
+        sync.poll = { _, _, _, _, _ in NtfyPollClient.PollResult() }
+        let vm = HistoryViewModel(store: store, syncService: sync)
+
+        try await store.upsert(makeMessage(id: "a1", topic: "alpha", time: 1), serverURL: "https://s.example")
+        vm.selectServerAll("https://s.example")
+        try await waitUntil { vm.messages.count == 1 }
+
+        try await store.upsert(makeMessage(id: "b1", topic: "beta", time: 2), serverURL: "https://s.example")
+        HistoryChangeBus.shared.post(topicRef: TopicRef(serverURL: "https://s.example", topic: "beta"))
+        try await waitUntil { vm.messages.count == 2 }
+        XCTAssertEqual(vm.messages.first?.id, "b1")
+
+        try await store.upsert(makeMessage(id: "o1", topic: "alpha", time: 3), serverURL: "https://other.example")
+        HistoryChangeBus.shared.post(topicRef: TopicRef(serverURL: "https://other.example", topic: "alpha"))
+        try await Task.sleep(nanoseconds: 600_000_000)
+        XCTAssertEqual(vm.messages.count, 2)
     }
 
     private func waitUntil(timeoutSeconds: TimeInterval = 5, _ condition: @MainActor () -> Bool) async throws {

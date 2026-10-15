@@ -9,9 +9,9 @@ final class ConfigSyncTranslatorTests: XCTestCase {
 
     private let url = "https://a.example"
 
-    private func syncTopic(_ name: String, iconSymbol: String? = nil, silent: Bool? = nil,
+    private func syncTopic(_ name: String, displayName: String? = nil, iconSymbol: String? = nil, silent: Bool? = nil,
                            clickUrl: ClickUrlConfig? = nil) -> SyncTopic {
-        SyncTopic(name: name, iconSymbol: iconSymbol, silent: silent, clickUrl: clickUrl)
+        SyncTopic(name: name, displayName: displayName, iconSymbol: iconSymbol, silent: silent, clickUrl: clickUrl)
     }
 
     private func syncServer(_ url: String, token: String? = nil, topics: [SyncTopic]) -> SyncServer {
@@ -22,6 +22,7 @@ final class ConfigSyncTranslatorTests: XCTestCase {
     private func machineLocalConfig(token: String? = "yaml-token", port: UInt16? = 9292) -> AppConfig {
         let topic = TopicConfig(
             name: "alerts",
+            displayName: "生产告警",
             iconPath: "/Users/me/a.png",
             iconSymbol: "bell",
             autoRunScript: "/usr/local/bin/a.sh",
@@ -45,6 +46,7 @@ final class ConfigSyncTranslatorTests: XCTestCase {
         let published = ConfigSyncTranslator.document(from: machineLocalConfig())
         XCTAssertEqual(published.serverIndex[url]?.topicIndex["alerts"]?.clickUrl, .custom("myapp://x"))
         XCTAssertEqual(published.serverIndex[url]?.topicIndex["alerts"]?.silent, true)
+        XCTAssertEqual(published.serverIndex[url]?.topicIndex["alerts"]?.displayName, "生产告警")
     }
 
     func testCloudTextExcludesMachineLocalSettingsAndTokens() throws {
@@ -76,6 +78,7 @@ final class ConfigSyncTranslatorTests: XCTestCase {
         XCTAssertEqual(topics.first?.iconPath, "/Users/me/a.png")
         XCTAssertEqual(topics.first?.autoRunScript, "/usr/local/bin/a.sh")
         XCTAssertEqual(topics.first?.actions?.count, 1)
+        XCTAssertNil(topics.first?.displayName, "备注是同步字段，云端没带就跟着清掉")
         XCTAssertNil(topics.last?.iconPath, "云端来的主题不带本机路径")
     }
 
@@ -136,7 +139,7 @@ final class ConfigSyncTranslatorTests: XCTestCase {
 
     func testApplyingTheMergedDocumentIsIdentityForPublishing() {
         let merged = SyncDocument(servers: [syncServer(url, token: "legacy-cloud",
-                                                       topics: [syncTopic("alerts", iconSymbol: "bell"), syncTopic("new-from-cloud")])])
+                                                       topics: [syncTopic("alerts", displayName: "生产告警", iconSymbol: "bell"), syncTopic("new-from-cloud")])])
         .canonicalized
         let write = apply(merged, to: machineLocalConfig(), keychain: .value("kc-token"))
         let republished = ConfigSyncTranslator.document(from: write.config)

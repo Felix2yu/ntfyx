@@ -156,6 +156,18 @@ final class CloudConfigStoreTests: XCTestCase {
         XCTAssertEqual(read?.servers.map(\.url), [url, "https://b.example"])
     }
 
+    /// 云端文件也是给人看的：中文备注不能写成 `\uXXXX` 转义。
+    func testChineseDisplayNameTravelsUnescaped() throws {
+        let document = SyncDocument(servers: [
+            SyncServer(url: url, topics: [SyncTopic(name: "alerts", displayName: "生产告警")])
+        ])
+        let text = try CloudConfigStore.encoded(document)
+
+        XCTAssertTrue(text.contains("display_name: 生产告警"), text)
+        XCTAssertFalse(text.contains("\\u"), text)
+        XCTAssertEqual(try CloudConfigStore.decode(text), document)
+    }
+
     func testNewerFormatVersionRefusesToParse() {
         XCTAssertThrowsError(try CloudConfigStore.decode("version: 99\nservers: []")) { error in
             guard case ConfigSyncError.unsupportedVersion(99) = error else {

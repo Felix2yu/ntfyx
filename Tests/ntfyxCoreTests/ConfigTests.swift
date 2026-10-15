@@ -59,6 +59,35 @@ final class ConfigTests: XCTestCase {
         }
     }
 
+    func testTopicConfigDecodesDisplayName() throws {
+        let yaml = """
+        name: alerts
+        display_name: 生产告警
+        """
+        let topic = try YAMLDecoder().decode(TopicConfig.self, from: yaml)
+
+        XCTAssertEqual(topic.name, "alerts")
+        XCTAssertEqual(topic.displayName, "生产告警")
+        XCTAssertEqual(topic.label, "生产告警")
+    }
+
+    func testTopicLabelFallsBackToNameWithoutUsableDisplayName() throws {
+        let decoder = YAMLDecoder()
+        let without = try decoder.decode(TopicConfig.self, from: "name: alerts")
+        XCTAssertEqual(without.label, "alerts")
+
+        let blank = try decoder.decode(TopicConfig.self, from: "name: alerts\ndisplay_name: \"  \"")
+        XCTAssertEqual(blank.label, "alerts")
+    }
+
+    func testTopicDisplayNameSurvivesYamlRoundTrip() throws {
+        let topic = TopicConfig(name: "alerts", displayName: "生产告警", iconSymbol: "bell.fill")
+        let decoded = try YAMLDecoder().decode(TopicConfig.self, from: try YAMLEncoder().encode(topic))
+
+        XCTAssertEqual(decoded, topic)
+        XCTAssertEqual(decoded.label, "生产告警")
+    }
+
     func testServerConfigDecoding() throws {
         let yaml = """
         url: https://ntfy.sh

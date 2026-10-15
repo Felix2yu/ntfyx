@@ -17,8 +17,44 @@ final class NotificationBannerTests: XCTestCase {
         )
     }
 
-    // MARK: - Icon files
+    // MARK: - Title fallback (中文备注)
 
+    private func message(title: String?, tags: [String]? = nil) -> NtfyMessage {
+        NtfyMessage(
+            id: "m1", time: 1_700_000_000, event: "message", topic: "nightly-backup",
+            message: "body", title: title, priority: 3, tags: tags,
+            click: nil, actions: nil, attachment: nil, contentType: nil, sequenceId: nil
+        )
+    }
+
+    func testTitlelessBannerIsNamedByTheTopicNote() {
+        XCTAssertEqual(
+            NotificationManager.bannerTitle(for: message(title: nil), topicLabel: "夜间备份"),
+            "夜间备份"
+        )
+    }
+
+    func testEmptyTitleCountsAsMissingAndFallsBack() {
+        XCTAssertEqual(
+            NotificationManager.bannerTitle(for: message(title: ""), topicLabel: "夜间备份"),
+            "夜间备份"
+        )
+    }
+
+    func testMessageTitleWinsOverTheTopicNote() {
+        XCTAssertEqual(
+            NotificationManager.bannerTitle(for: message(title: "备份失败"), topicLabel: "夜间备份"),
+            "备份失败"
+        )
+    }
+
+    func testTopicNoteKeepsTheTagEmojiPrefix() {
+        let title = NotificationManager.bannerTitle(for: message(title: nil, tags: ["warning"]), topicLabel: "夜间备份")
+        XCTAssertTrue(title.hasSuffix("夜间备份"), title)
+        XCTAssertNotEqual(title, "夜间备份", "标签表情仍然要保留")
+    }
+
+    // MARK: - Icon files
     /// Notification Center moves an attachment's file into its own store when the request is
     /// added, so each banner writes the cached PNG back to this path. The name has to be stable
     /// per symbol and must not let two symbols collide on one file.

@@ -11,8 +11,13 @@ final class ConnectionRegistryTests: XCTestCase {
         servers: [(url: String, topics: [String])] = [("https://a.example", ["t1"])]
     ) -> ConnectionRegistry {
         let registry = ConnectionRegistry()
-        registry.updateServers(servers: servers)
+        registry.updateServers(servers: servers.map { (url: $0.url, topics: rows($0.topics)) })
         return registry
+    }
+
+    /// Menu rows without a 备注: the label is the id itself.
+    private func rows(_ names: [String]) -> [ConnectionRegistry.TopicRow] {
+        names.map { ConnectionRegistry.TopicRow(id: $0, label: $0) }
     }
 
     // MARK: - State derivation
@@ -69,9 +74,27 @@ final class ConnectionRegistryTests: XCTestCase {
         registry.setServerConnected("https://a.example", connected: true)
 
         // Same server with a changed topic list must stay connected (no "connecting" blink).
-        registry.updateServers(servers: [("https://a.example", ["t1", "t2"])])
+        registry.updateServers(servers: [("https://a.example", rows(["t1", "t2"]))])
         XCTAssertEqual(registry.statuses["https://a.example"]?.state, .connected)
-        XCTAssertEqual(registry.statuses["https://a.example"]?.topics, ["t1", "t2"])
+        XCTAssertEqual(registry.statuses["https://a.example"]?.topics.map(\.id), ["t1", "t2"])
+    }
+
+    func testMenuRowKeepsTheIDWhenANameIsSet() {
+        let registry = ConnectionRegistry()
+        registry.updateServers(servers: [
+            ("https://a.example", [
+                ConnectionRegistry.TopicRow(id: "alerts", label: "生产告警"),
+                ConnectionRegistry.TopicRow(id: "builds", label: "builds"),
+            ])
+        ])
+
+        let topics = registry.statuses["https://a.example"]?.topics ?? []
+        XCTAssertEqual(topics.map(\.label), ["生产告警", "builds"])
+        // The English id stays available for the tooltip, but only where it says something new.
+        XCTAssertEqual(topics.first?.idTooltip, "主题 id：alerts")
+        XCTAssertEqual(topics.last?.idTooltip, "")
+        // Counting counts subscriptions, not distinct labels.
+        XCTAssertEqual(registry.statusLine.dot, .orangePulse)
     }
 
     func testUpdateServersResetsOnlyNewServersToConnecting() {
@@ -79,8 +102,8 @@ final class ConnectionRegistryTests: XCTestCase {
         registry.setServerConnected("https://a.example", connected: true)
 
         registry.updateServers(servers: [
-            ("https://a.example", ["t1"]),
-            ("https://b.example", ["t2"])
+            ("https://a.example", rows(["t1"])),
+            ("https://b.example", rows(["t2"]))
         ])
         XCTAssertEqual(registry.statuses["https://a.example"]?.state, .connected)
         XCTAssertEqual(registry.statuses["https://b.example"]?.state, .connecting)
@@ -93,7 +116,7 @@ final class ConnectionRegistryTests: XCTestCase {
             ("https://a.example", ["t1"]),
             ("https://b.example", ["t2"])
         ])
-        registry.updateServers(servers: [("https://a.example", ["t1"])])
+        registry.updateServers(servers: [("https://a.example", rows(["t1"]))])
         XCTAssertNil(registry.statuses["https://b.example"])
         XCTAssertNotNil(registry.statuses["https://a.example"])
     }

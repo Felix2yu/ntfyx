@@ -8,9 +8,9 @@ import Yams
 /// back and forth forever.
 final class ConfigSyncEngineTests: XCTestCase {
 
-    private func topic(_ name: String, iconSymbol: String? = nil, silent: Bool? = nil,
+    private func topic(_ name: String, displayName: String? = nil, iconSymbol: String? = nil, silent: Bool? = nil,
                        clickUrl: ClickUrlConfig? = nil, fetchMissed: Bool? = nil) -> SyncTopic {
-        SyncTopic(name: name, iconSymbol: iconSymbol, silent: silent, clickUrl: clickUrl, fetchMissed: fetchMissed)
+        SyncTopic(name: name, displayName: displayName, iconSymbol: iconSymbol, silent: silent, clickUrl: clickUrl, fetchMissed: fetchMissed)
     }
 
     private func server(_ url: String, token: String? = nil, topics: [SyncTopic],
@@ -103,6 +103,25 @@ final class ConfigSyncEngineTests: XCTestCase {
 
         XCTAssertEqual(fromLeft, fromRight, "both Macs must pick the same icon or the file oscillates")
         XCTAssertNotNil(fromLeft.servers.first?.topics.first?.iconSymbol)
+    }
+
+    func testDisplayNameChangedOnOneSideOnlyTakesThatSide() {
+        let base = doc([server("https://a.example", topics: [topic("alerts", displayName: "旧名字")])])
+        let local = doc([server("https://a.example", topics: [topic("alerts", displayName: "生产告警")])])
+
+        let merged = ConfigMerger.merge(base: base, local: local, cloud: base)
+        XCTAssertEqual(merged.servers.first?.topics.first?.displayName, "生产告警")
+    }
+
+    func testConflictingDisplayNamesResolveIdenticallyFromEitherPerspective() {
+        let base = doc([server("https://a.example", topics: [topic("alerts", displayName: "旧名字")])])
+        let left = doc([server("https://a.example", topics: [topic("alerts", displayName: "生产告警")])])
+        let right = doc([server("https://a.example", topics: [topic("alerts", displayName: "值班告警")])])
+
+        let fromLeft = ConfigMerger.merge(base: base, local: left, cloud: right)
+        let fromRight = ConfigMerger.merge(base: base, local: right, cloud: left)
+
+        XCTAssertEqual(fromLeft, fromRight, "两台 Mac 必须选到同一个备注，否则云端文件来回跳")
     }
 
     func testUnchangedOnBothSidesStaysUnchanged() {

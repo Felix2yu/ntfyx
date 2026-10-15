@@ -188,4 +188,92 @@ final class ConfigSerializerTests: XCTestCase {
         XCTAssertTrue(saved.contains("name: other"), saved)
         XCTAssertNotEqual(store.activePath, ConfigStore.defaultConfigPath)
     }
+
+    // MARK: - 中文备注 survives a save
+
+    func testChineseDisplayNameIsWrittenBackVerbatimWithItsComments() throws {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cfg-cn-\(UUID().uuidString).yml").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let original = """
+        # 我的订阅
+        servers:
+          - url: https://a.example
+            topics:
+              - name: alerts  # 服务器上建的英文主题
+                display_name: 生产告警
+        """
+        try original.write(toFile: path, atomically: true, encoding: .utf8)
+
+        let store = ConfigStore()
+        try store.load(from: path)
+        XCTAssertEqual(store.config?.servers.first?.topics.first?.label, "生产告警")
+
+        try store.save(store.config!)
+        let saved = try String(contentsOfFile: path, encoding: .utf8)
+
+        // Yams must not escape the Chinese value into \uXXXX, or the file stops being editable.
+        XCTAssertTrue(saved.contains("display_name: 生产告警"), saved)
+        XCTAssertFalse(saved.contains("\\u"), saved)
+        XCTAssertTrue(saved.contains("# 我的订阅"), saved)
+        XCTAssertTrue(saved.contains("# 服务器上建的英文主题"), saved)
+    }
+
+    // MARK: - Shipped sample files
+
+    /// `ntfyxctl init` writes this verbatim, so it has to decode — and the commented block in
+    /// the first-launch file is what a user copies by hand.
+    func testSampleAndInitialConfigsDecode() throws {
+        let sample = try YAMLDecoder().decode(AppConfig.self, from: ConfigFile.sampleConfigYAML)
+        XCTAssertEqual(sample.servers.count, 2)
+        XCTAssertEqual(sample.servers[0].topics.first?.label, "生产告警")
+        XCTAssertEqual(sample.servers[0].topics.first?.name, "alerts")
+        XCTAssertNil(ConfigFile.checkForUnknownKeys(in: ConfigFile.sampleConfigYAML))
+
+        let initial = try YAMLDecoder().decode(AppConfig.self, from: ConfigFile.initialConfigYAML)
+        XCTAssertTrue(initial.servers.isEmpty)
+        XCTAssertEqual(initial.allTopics.count, 0)
+    }
+
+    // MARK: - Unknown key whitelist
+
+    func testSupportedTopicAndActionKeysDoNotWarn() {
+        let yaml = """
+        servers:
+          - url: https://a.example
+            topics:
+              - name: alerts
+                display_name: 生产告警
+                auto_run_script: /bin/true
+                auto_run_script_args: ["--fast"]
+                actions:
+                  - title: 处理
+                    type: script
+                    path: /bin/true
+                    args: ["--now"]
+        """
+        XCTAssertNil(ConfigFile.checkForUnknownKeys(in: yaml))
+    }
+
+    func testTypoInTopicKeyStillWarns() {
+        let yaml = """
+        servers:
+          - url: https://a.example
+            topics:
+              - name: alerts
+                display_name: 生产告警
+                icon_symbol: bell
+                auto_run_script: /bin/true
+                auto_run_script_args: ["--fast"]
+                actions:
+                  - title: 处理
+                    type: script
+                    path: /bin/true
+                    args: ["--now"]
+                iconpath: /bin/icon.png
+        """
+        let warning = ConfigFile.checkForUnknownKeys(in: yaml)
+        XCTAssertTrue(warning?.contains("iconpath") ?? false, warning ?? "no warning emitted")
+    }
 }

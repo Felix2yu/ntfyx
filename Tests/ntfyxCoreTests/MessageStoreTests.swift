@@ -140,6 +140,59 @@ final class MessageStoreTests: XCTestCase {
         XCTAssertEqual(collected.count, 5)  // no duplicates, no drops
     }
 
+    // MARK: - Merged per-server page
+
+    /// A nil topic merges every topic the server has rows for. The rows must still name their
+    /// own topic (the UI labels them) and must not leak another server's messages in.
+    func testServerWidePageMergesTopicsNewestFirst() async throws {
+        try await store.upsert(makeMessage(id: "a1", topic: "alpha", time: 300), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "b1", topic: "beta", time: 400), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "a2", topic: "alpha", time: 200), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "o1", topic: "beta", time: 500), serverURL: "https://other.example")
+
+        let page = try await store.messages(serverURL: "https://s.example", topic: nil)
+        XCTAssertEqual(page.map { $0.message.id }, ["b1", "a1", "a2"])
+        XCTAssertEqual(page.map(\.topic), ["beta", "alpha", "alpha"])
+        XCTAssertEqual(Set(page.map(\.serverURL)), ["https://s.example"])
+    }
+
+    func testServerWidePageKeepsSameSecondRowsAcrossPages() async throws {
+        let t = 1_700_000_600
+        let topics = ["alpha", "beta"]
+        for index in 0..<6 {
+            try await store.upsert(
+                makeMessage(id: "m\(index)", topic: topics[index % 2], time: t),
+                serverURL: "https://s.example"
+            )
+        }
+
+        var collected: [String] = []
+        var cursor: PageCursor?
+        while true {
+            let page = try await store.messages(
+                serverURL: "https://s.example", topic: nil, limit: 2, before: cursor
+            )
+            collected.append(contentsOf: page.map { $0.message.id })
+            guard page.count == 2, let last = page.last else { break }
+            cursor = last.cursor
+        }
+        XCTAssertEqual(collected.count, 6)
+        XCTAssertEqual(Set(collected), Set((0..<6).map { "m\($0)" }))
+    }
+
+    func testServerWidePageHonorsOnlyUnreadAndSearch() async throws {
+        try await store.upsert(makeMessage(id: "a1", topic: "alpha", time: 300, message: "磁盘已满"), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "b1", topic: "beta", time: 400, message: "disk full"), serverURL: "https://s.example")
+        try await store.upsert(makeMessage(id: "b2", topic: "beta", time: 200, message: "disk quiet"), serverURL: "https://s.example")
+        try await store.markAllRead(serverURL: "https://s.example", topic: "alpha")
+
+        let unread = try await store.messages(serverURL: "https://s.example", topic: nil, onlyUnread: true)
+        XCTAssertEqual(unread.map { $0.message.id }, ["b1", "b2"])
+
+        let matched = try await store.messages(serverURL: "https://s.example", topic: nil, searchText: "disk")
+        XCTAssertEqual(matched.map { $0.message.id }, ["b1", "b2"])
+    }
+
     func testMessageCount() async throws {
         try await store.upsert(makeMessage(id: "m1"), serverURL: "https://s.example")
         try await store.upsert(makeMessage(id: "m2"), serverURL: "https://s.example")

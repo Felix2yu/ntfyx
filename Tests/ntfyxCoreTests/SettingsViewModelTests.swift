@@ -188,6 +188,81 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertEqual(server?.topics.first?.name, "alerts")
     }
 
+    // MARK: - Display name (中文备注)
+
+    func testDisplayNameRoundTripsThroughTheEditor() throws {
+        let src = tempPath("src")
+        let dst = tempPath("dst")
+        defer { try? FileManager.default.removeItem(atPath: src); try? FileManager.default.removeItem(atPath: dst) }
+
+        let yaml = """
+        servers:
+          - url: https://ntfy.example.com
+            topics:
+              - name: alerts
+                display_name: 生产告警
+        """
+        try yaml.write(toFile: src, atomically: true, encoding: .utf8)
+        let store = ConfigStore()
+        try store.load(from: src)
+
+        let vm = SettingsViewModel(configStore: store)
+        vm.loadFromConfig()
+        XCTAssertEqual(vm.servers[0].topics[0].displayName, "生产告警")
+        XCTAssertEqual(vm.servers[0].topics[0].label, "生产告警")
+        XCTAssertEqual(vm.servers[0].topics[0].name, "alerts")
+
+        vm.save(to: dst)
+        XCTAssertNil(vm.saveError, "save failed: \(vm.saveError ?? "")")
+
+        try store.load(from: dst)
+        let topic = store.config?.servers.first?.topics.first
+        XCTAssertEqual(topic?.name, "alerts")
+        XCTAssertEqual(topic?.displayName, "生产告警")
+    }
+
+    func testDisplayNameIsTrimmedAndBlankBecomesAbsent() throws {
+        let dst = tempPath("dst")
+        defer { try? FileManager.default.removeItem(atPath: dst) }
+
+        let store = ConfigStore()
+        let vm = SettingsViewModel(configStore: store)
+        vm.addServer()
+        vm.servers[0].url = "https://a.example.com"
+        vm.servers[0].topics[0].name = "alerts"
+        vm.servers[0].topics[0].displayName = "  生产告警 "
+        vm.addTopic(to: vm.servers[0].id)
+        vm.servers[0].topics[1].name = "releases"
+        vm.servers[0].topics[1].displayName = "   "
+
+        vm.save(to: dst)
+        XCTAssertNil(vm.saveError, "save failed: \(vm.saveError ?? "")")
+
+        try store.load(from: dst)
+        let topics = store.config?.servers.first?.topics ?? []
+        XCTAssertEqual(topics.map(\.displayName), ["生产告警", nil])
+        XCTAssertEqual(topics.map(\.label), ["生产告警", "releases"])
+
+        let text = try String(contentsOfFile: dst, encoding: .utf8)
+        XCTAssertFalse(text.contains("display_name: \"\""), text)
+    }
+
+    func testSaveRejectsOverlongDisplayName() throws {
+        let dst = tempPath("dst")
+        defer { try? FileManager.default.removeItem(atPath: dst) }
+
+        let vm = SettingsViewModel(configStore: ConfigStore())
+        vm.addServer()
+        vm.servers[0].url = "https://a.example.com"
+        vm.servers[0].topics[0].name = "alerts"
+        vm.servers[0].topics[0].displayName = String(repeating: "警", count: 65)
+
+        vm.save(to: dst)
+
+        XCTAssertNotNil(vm.saveError, "an unreadable note must not be savable")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dst))
+    }
+
     // MARK: - Connectivity tests (audit 3.2)
 
     private func makeServer(url: String = "https://probe.example", token: String = "", topicName: String = "alerts") -> EditableServer {
