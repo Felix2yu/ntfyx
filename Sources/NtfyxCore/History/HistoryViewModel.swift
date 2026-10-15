@@ -145,6 +145,8 @@ public final class HistoryViewModel {
     private var globalSearchTask: Task<Void, Never>?
     private var storeChangeSettleTask: Task<Void, Never>?
     private var pendingStoreChangeTopics: Set<TopicRef> = []
+    /// Topics whose unread count moved while their rows stayed put (scroll-to-read).
+    private var pendingCountsOnlyTopics: Set<TopicRef> = []
     private var pendingStoreChangeIsGlobal = false
 
     // MARK: - Init
@@ -155,7 +157,7 @@ public final class HistoryViewModel {
         self.configStore = configStore
         busCancellation.task = Task { [weak self, changeBus] in
             for await change in changeBus.changes() {
-                self?.noteStoreChange(topicRef: change.topicRef)
+                self?.noteStoreChange(topicRef: change.topicRef, countsOnly: change.countsOnly)
             }
         }
         refreshSidebar()
@@ -424,6 +426,59 @@ public final class HistoryViewModel {
                 sequenceID: sequenceID,
                 messageID: messageID,
                 authToken: configStore.authToken(forServer: ref.serverURL)
+            )
+        }
+    }
+
+    // MARK: - Scroll-to-read (滚动即已读)
+
+    /// Cards that just crossed the visibility threshold, keyed by message id so a row reported
+    /// twice counts once. The settle window is what keeps a flick through a screenful at
+    /// *one* store write, one badge refresh and a handful of requests — instead of doing all
+    /// three per message.
+    private var scrollReadPending: [String: StoredMessage] = [:]
+    private var scrollReadSettleTask: Task<Void, Never>?
+    private static let scrollReadSettleTime: TimeInterval = 0.25
+
+    /// Called for every card that scrolls into view while the setting is on.
+    func markReadOnScroll(_ stored: StoredMessage) {
+        guard !stored.isRead else { return }
+        scrollReadPending[stored.id] = stored
+        scrollReadSettleTask?.cancel()
+        scrollReadSettleTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.scrollReadSettleTime * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await self?.flushScrollReads()
+        }
+    }
+
+    private func flushScrollReads() async {
+        let rows = Array(scrollReadPending.values)
+        scrollReadPending.removeAll()
+        guard !rows.isEmpty else { return }
+
+        let flipped = (try? await store.markReadBatch(rows)) ?? []
+        guard !flipped.isEmpty else { return }
+
+        // Flip the rows on screen in place instead of re-reading the page: the scroll position
+        // stays put and 仅看未读 cannot pull the row out from under the pointer.
+        let read = Set(flipped.map(\.id))
+        for index in messages.indices where read.contains(messages[index].id) {
+            messages[index].isRead = true
+        }
+
+        for ref in Set(flipped.map(\.topicRef)) {
+            postStoreChange(for: ref, countsOnly: true)
+        }
+        NotificationManager.shared.revoke(messageIDs: flipped.map { $0.message.id })
+
+        for (ref, group) in Dictionary(grouping: flipped, by: { $0.topicRef }) {
+            await MessageActionService.markAllReadOnServer(
+                serverURL: ref.serverURL,
+                topic: ref.topic,
+                targets: group.map { (sequenceID: $0.message.sequenceId, messageID: $0.message.id) },
+                authToken: configStore.authToken(forServer: ref.serverURL),
+                session: serverMarkReadSession
             )
         }
     }
@@ -771,9 +826,13 @@ public final class HistoryViewModel {
 
     // MARK: - Live updates (audit B3: bus + Task coalescing)
 
-    private func noteStoreChange(topicRef ref: TopicRef?) {
+    private func noteStoreChange(topicRef ref: TopicRef?, countsOnly: Bool = false) {
         if let ref {
-            pendingStoreChangeTopics.insert(ref)
+            if countsOnly {
+                pendingCountsOnlyTopics.insert(ref)
+            } else {
+                pendingStoreChangeTopics.insert(ref)
+            }
         } else {
             // A change that names no topic (retention, a whole-store edit) can affect anything.
             pendingStoreChangeIsGlobal = true
@@ -788,12 +847,19 @@ public final class HistoryViewModel {
 
     private func flushStoreChanges() {
         let refs = pendingStoreChangeTopics
+        let countsOnlyRefs = pendingCountsOnlyTopics
         let isGlobal = pendingStoreChangeIsGlobal
         pendingStoreChangeTopics.removeAll()
+        pendingCountsOnlyTopics.removeAll()
         pendingStoreChangeIsGlobal = false
-        guard !refs.isEmpty || isGlobal else { return }
+        guard !refs.isEmpty || !countsOnlyRefs.isEmpty || isGlobal else { return }
 
         refreshSidebar()
+        // A counts-only change is the list's own edit coming back around: the rows on screen
+        // were already flipped in place, so re-reading them would only swap the array under
+        // the user's scroll position (and drop the ones 仅看未读 no longer matches).
+        let reloadable = isGlobal || !refs.isEmpty
+        guard reloadable else { return }
         switch selection {
         case .topic(let selected):
             if isGlobal || refs.contains(selected) {
@@ -809,7 +875,7 @@ public final class HistoryViewModel {
         }
     }
 
-    private func postStoreChange(for ref: TopicRef) {
-        changeBus.post(topicRef: ref)
+    private func postStoreChange(for ref: TopicRef, countsOnly: Bool = false) {
+        changeBus.post(topicRef: ref, countsOnly: countsOnly)
     }
 }

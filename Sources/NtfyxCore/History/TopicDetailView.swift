@@ -5,6 +5,7 @@ import SwiftUI
 struct TopicDetailView: View {
     @Bindable var viewModel: HistoryViewModel
     let topicRef: TopicRef
+    @AppStorage(AppSettings.scrollMarksReadKey) private var scrollMarksRead = false
 
     private var topicLabel: String { viewModel.label(for: topicRef) }
     private var idTooltip: Text { topicLabel == topicRef.topic ? Text(verbatim: "") : Text("主题 id：\(topicRef.topic)") }
@@ -123,6 +124,11 @@ struct TopicDetailView: View {
                                 }
                             )
                             .id(stored.id)
+                            .onScrollVisibilityChange(threshold: 0.25) { visible in
+                                if visible, scrollMarksRead {
+                                    viewModel.markReadOnScroll(stored)
+                                }
+                            }
                             .onAppear {
                                 if stored.id == viewModel.messages.last?.id {
                                     viewModel.loadOlder()

@@ -193,6 +193,39 @@ public actor MessageStore {
         }
     }
 
+    /// Marks many messages read in one transaction and returns the rows that were actually
+    /// unread before, so the caller only revokes banners and syncs ids that really flipped.
+    ///
+    /// Deliberately row-scoped, unlike `markAllRead`: a scroll only ever shows a handful of
+    /// messages, and moving the topic watermark up to `MAX(time)` would silently mark the
+    /// unseen backlog read — including messages retention has not even pruned yet.
+    func markReadBatch(_ rows: [StoredMessage]) throws -> [StoredMessage] {
+        let unread = rows.filter { !$0.isRead }
+        guard !unread.isEmpty else { return [] }
+
+        try db.inTransaction(.immediate) { db in
+            var index = 0
+            while index < unread.count {
+                let chunk = Array(unread[index..<min(index + Self.markReadChunk, unread.count)])
+                var sql = "UPDATE messages SET is_read = 1 WHERE is_read = 0 AND ("
+                var bindings: [DatabaseValueConvertible?] = []
+                for row in chunk {
+                    sql += "(server_url = ? AND topic = ? AND msg_id = ?) OR "
+                    bindings.append(contentsOf: [row.serverURL, row.topic, row.message.id])
+                }
+                sql.removeLast(4)  // the trailing " OR "
+                sql += ")"
+                try db.execute(sql: sql, arguments: StatementArguments(bindings))
+                index += chunk.count
+            }
+            return .commit
+        }
+        return unread
+    }
+
+    /// Three placeholders per row keeps one statement well under SQLite's variable limit.
+    private static let markReadChunk = 150
+
     func markAllRead(_ read: Bool = true, serverURL: String, topic: String) throws {
         try db.inDatabase { db in
             try db.execute(

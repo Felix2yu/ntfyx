@@ -7,6 +7,7 @@ import SwiftUI
 struct ServerHistoryView: View {
     @Bindable var viewModel: HistoryViewModel
     let serverURL: String
+    @AppStorage(AppSettings.scrollMarksReadKey) private var scrollMarksRead = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -90,6 +91,11 @@ struct ServerHistoryView: View {
                                 showsTopic: true
                             )
                             .id(stored.id)
+                            .onScrollVisibilityChange(threshold: 0.25) { visible in
+                                if visible, scrollMarksRead {
+                                    viewModel.markReadOnScroll(stored)
+                                }
+                            }
                             .onAppear {
                                 if stored.id == viewModel.messages.last?.id {
                                     viewModel.loadOlder()

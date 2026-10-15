@@ -355,17 +355,21 @@ private struct TopicBrowserView: View {
 
     @ViewBuilder
     private func row(_ entry: HistoryViewModel.ServerTopicEntry) -> some View {
-        let label = viewModel.label(for: TopicRef(serverURL: entry.serverURL, topic: entry.topic))
-        return HStack(spacing: 8) {
+        HStack(spacing: 8) {
             Image(systemName: statusIcon(entry.status))
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
-            Text(label)
+            Text(rowLabel(entry))
                 .lineLimit(1)
             Spacer()
             trailing(entry)
         }
         .padding(.vertical, 2)
+    }
+
+    /// Subscribed rows show the user's 备注; the rest can only show the server's name.
+    private func rowLabel(_ entry: HistoryViewModel.ServerTopicEntry) -> String {
+        viewModel.label(for: TopicRef(serverURL: entry.serverURL, topic: entry.topic))
     }
 
     private func statusIcon(_ status: HistoryViewModel.ServerTopicEntry.Status) -> String {

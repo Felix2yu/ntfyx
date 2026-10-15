@@ -12,6 +12,14 @@ final class HistoryChangeBus {
 
     struct Change: Equatable {
         let topicRef: TopicRef?
+        /// Only the unread counts moved — the rows themselves still show the same content, so
+        /// the list keeps its items and scroll position and just the sidebar and badge refresh.
+        let countsOnly: Bool
+
+        init(topicRef: TopicRef?, countsOnly: Bool = false) {
+            self.topicRef = topicRef
+            self.countsOnly = countsOnly
+        }
     }
 
     private var continuations: [UUID: AsyncStream<Change>.Continuation] = [:]
@@ -32,8 +40,8 @@ final class HistoryChangeBus {
         }
     }
 
-    func post(topicRef: TopicRef?) {
-        let change = Change(topicRef: topicRef)
+    func post(topicRef: TopicRef?, countsOnly: Bool = false) {
+        let change = Change(topicRef: topicRef, countsOnly: countsOnly)
         for continuation in continuations.values {
             continuation.yield(change)
         }

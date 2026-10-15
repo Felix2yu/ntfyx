@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var syncDirectory = ""
 
     @AppStorage(AppSettings.expandMessagesByDefaultKey) private var expandByDefault = false
+    @AppStorage(AppSettings.scrollMarksReadKey) private var scrollMarksRead = false
     @AppStorage(AppSettings.messageFontSizeKey) private var messageFontSize = 13.0
     @State private var launchAtLogin = LoginItem.isEnabled
     @State private var loginError: String?
@@ -59,6 +60,9 @@ struct SettingsView: View {
 
             Toggle("默认展开消息全文", isOn: $expandByDefault)
                 .help("长消息进入通知历史时即完整显示；单条仍可点击「收起」折回")
+
+            Toggle("滚动即已读", isOn: $scrollMarksRead)
+                .help("浏览历史时，卡片有四分之一以上进入视口就标为已读，并像点击卡片那样同步到服务器；已读的条目仍留在列表里，不抽走、不跳位")
 
             LabeledContent("消息字号") {
                 HStack(spacing: 8) {
