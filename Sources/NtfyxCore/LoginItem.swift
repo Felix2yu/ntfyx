@@ -19,7 +19,7 @@ enum LoginItem {
             }
             return nil
         } catch {
-            return "设置开机启动失败：\(error.localizedDescription)"
+            return L10n.format("设置开机启动失败：%@", error.localizedDescription)
         }
     }
 }

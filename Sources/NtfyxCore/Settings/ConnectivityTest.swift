@@ -24,17 +24,17 @@ enum ConnectivityTest {
         let base = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard base.hasPrefix("http"), URL(string: base) != nil else {
-            return .unreachable(reason: "地址无效（需 http/https）")
+            return .unreachable(reason: L10n.text("地址无效（需 http/https）"))
         }
 
         var infoRequest = URLRequest(url: URL(string: "\(base)/json")!)
         infoRequest.timeoutInterval = 15
         guard let (data, response) = try? await session.data(for: infoRequest),
               let http = response as? HTTPURLResponse else {
-            return .unreachable(reason: "无法连接服务器")
+            return .unreachable(reason: L10n.text("无法连接服务器"))
         }
         guard http.statusCode == 200 else {
-            return .unreachable(reason: "HTTP \(http.statusCode)")
+            return .unreachable(reason: L10n.format("HTTP %d", http.statusCode))
         }
         let version = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["version"] as? String
 
@@ -65,7 +65,7 @@ enum ConnectivityTest {
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let trimmedTopic = topic.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: "\(base)/\(trimmedTopic)") else {
-            return .unreachable(reason: "地址无效")
+            return .unreachable(reason: L10n.text("地址无效"))
         }
 
         let formatter = DateFormatter()
@@ -83,7 +83,7 @@ enum ConnectivityTest {
 
         guard let (response) = try? await session.data(for: request),
               let http = response.1 as? HTTPURLResponse else {
-            return .unreachable(reason: "无法连接服务器")
+            return .unreachable(reason: L10n.text("无法连接服务器"))
         }
         guard (200...299).contains(http.statusCode) else {
             return .writeRejected(status: http.statusCode)

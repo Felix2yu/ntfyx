@@ -3,13 +3,18 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
+    <string>zh-Hans</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>zh-Hans</string>
+        <string>en</string>
+    </array>
     <key>CFBundleExecutable</key>
     <string>ntfyx</string>
     <key>CFBundleIconFile</key>
     <string>ntfyx</string>
     <key>CFBundleIdentifier</key>
-    <string>com.laurentftech.ntfyx</string>
+    <string>im.yufei.ntfyx</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
@@ -25,7 +30,7 @@
     <key>LSUIElement</key>
     <false/>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2026 Laurent. All rights reserved.</string>
+    <string>Copyright © 2026 Felix2yu. All rights reserved.</string>
     <!-- The Dock app usually runs with no open window while keeping subscriptions
          alive, so the system must not treat it as an idle candidate for termination. -->
     <key>NSSupportsAutomaticTermination</key>

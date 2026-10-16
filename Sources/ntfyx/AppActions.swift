@@ -17,10 +17,10 @@ enum AppActions {
         }
 
         let alert = NSAlert()
-        alert.messageText = "未找到日志"
-        alert.informativeText = "尚未生成日志文件。日志将写入 \(Log.logDirectory)"
+        alert.messageText = L("未找到日志")
+        alert.informativeText = LF("尚未生成日志文件。日志将写入 %@", Log.logDirectory)
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "好")
+        alert.addButton(withTitle: L("好"))
         alert.runModal()
         // The alert itself is a window; a background service must demote once it closes.
         AppMode.demoteToAccessoryIfNeeded()

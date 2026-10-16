@@ -1,7 +1,6 @@
 # ntfyx
 
 [![Build & Test](https://github.com/Felix2yu/ntfyx/actions/workflows/build.yml/badge.svg)](https://github.com/Felix2yu/ntfyx/actions/workflows/build.yml)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?style=flat&logo=buy-me-a-coffee)](https://buymeacoffee.com/laurentftech)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![macOS 26+](https://img.shields.io/badge/macOS-26%2B-brightgreen.svg)](https://www.apple.com/macos/)
 [![Swift 6](https://img.shields.io/badge/Swift-6-orange.svg)](https://swift.org/)
@@ -37,6 +36,7 @@
 - **iCloud 配置同步**：服务器与主题配置在多台 Mac 之间三方合并，消息不走这条路
 - **本地通知服务器**：内建 HTTP 服务器（仅限 localhost），供脚本直接触发通知
 - **设置窗口**：原生 SwiftUI 界面，配置服务器与主题，实时显示连接状态
+- **中英文界面**：默认跟随系统语言，也可在设置里单独指定；语言切换即时生效，服务器发来的消息始终按原文显示
 
 ## 安装
 
@@ -81,6 +81,11 @@ sudo cp -r .build/release/ntfyx.app /Applications/
 ```
 
 然后重新启动服务。
+
+> 这一版把 bundle id 从 `com.laurentftech.ntfyx` 换成了 `im.yufei.ntfyx`。本机设置（iCloud 同步开关与
+> 同步文件夹、消息字号、侧栏宽度、各服务器的重连水位）会在首次启动时自动搬过去；钥匙串里的令牌和
+> iCloud Drive 里的同步文件本来就不挂在 bundle id 上，不受影响。**只有通知授权需要重新点一次「允许」**
+> ——授权是按 bundle id 记的，新 id 第一次启动会重新弹窗。
 
 ## 快速开始
 
@@ -547,7 +552,7 @@ ntfy 支持在 `Tags` 字段中使用 [emoji 短代码](https://docs.ntfy.sh/emo
 
 ## 故障排查
 
-- **日志**：`~/Library/Logs/ntfyx/ntfyx.log`（也可在 Console.app 中按子系统 `com.laurentftech.ntfyx` 查看统一日志）
+- **日志**：`~/Library/Logs/ntfyx/ntfyx.log`（也可在 Console.app 中按子系统 `im.yufei.ntfyx` 查看统一日志）
 - **测试通知**：`ntfyx test-notify --topic test`
 - **连接问题**：核对服务器地址和令牌。
 - **脚本未执行**：确认脚本有执行权限（`chmod +x`）。
@@ -565,13 +570,23 @@ ntfy 支持在 `Tags` 字段中使用 [emoji 短代码](https://docs.ntfy.sh/emo
 
 欢迎贡献！请在 GitHub 上提交 issue 或 pull request。
 
+### 界面文案与翻译
+
+界面文字走一张以中文原文为 key 的翻译表（`Sources/NtfyxCore/Resources/Localizable.xcstrings`）：
+
+- 代码里写 `L("取消")`，带变量的写 `LF("%d 个主题", n)`；非主 actor 的代码用 `L10n.text(...)` / `L10n.format(...)`
+- 中文是源语言：key 缺失时直接显示中文，不会漏出一个标识符
+- 新增文案后跑 `python3 tools/l10n_catalog.py sync` 把 key 补进表里，再填英文；`check` 会挑出没翻译、翻译里残留中文、以及占位符对不上的条目（`swift test` 里的 `LocalizationTests` 同样会拦）
+- 日志与 `ntfyxctl` 的输出不参与翻译，保持中文
+
 ## 许可证
 
 MIT License
 
 ## 致谢
 
-本项目是 [ntfy](https://ntfy.sh) 的第三方客户端，ntfy 由 [Philipp C. Heckel](https://github.com/binwiederhier) 创建。
+- [Laurent FRANCOISE](https://laurentftech.github.io) —— 本项目的原作者，ntfyx 的前身由他编写
+- [Philipp C. Heckel](https://github.com/binwiederhier) —— [ntfy](https://ntfy.sh) 的作者，本项目建设在其之上
 
 ## 相关项目
 

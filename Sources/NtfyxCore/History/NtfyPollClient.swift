@@ -73,11 +73,11 @@ enum NtfyPollClient {
             switch self {
             case .http(let status, let retryAfter):
                 if let retryAfter {
-                    return "服务器返回 \(status)（限速），\(Int(retryAfter)) 秒后可重试"
+                    return L10n.format("服务器返回 %1$d（限速），%2$d 秒后可重试", status, Int(retryAfter))
                 }
-                return "服务器返回 \(status)"
+                return L10n.format("服务器返回 %1$d", status)
             case .network(let error):
-                return "网络错误：\(error.localizedDescription)"
+                return L10n.format("网络错误：%@", error.localizedDescription)
             }
         }
 

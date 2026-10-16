@@ -14,6 +14,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.messageFontSizeKey) private var messageFontSize = 13.0
     @State private var launchAtLogin = LoginItem.isEnabled
     @State private var loginError: String?
+    @Bindable private var locale = AppLocale.shared
 
     private var isLocalServerEnabled: Bool {
         !viewModel.localServerPort.trimmingCharacters(in: .whitespaces).isEmpty
@@ -39,7 +40,14 @@ struct SettingsView: View {
 
     private var generalSection: some View {
         Section {
-            Toggle("开机时启动", isOn: Binding(
+            Picker(L("界面语言"), selection: $locale.choice) {
+                Text(L("跟随系统")).tag(LanguageChoice.auto)
+                Text("简体中文").tag(LanguageChoice.zhHans)
+                Text("English").tag(LanguageChoice.en)
+            }
+            .help(L("只切换 ntfyx 的界面文字，保存在本机、不参与 iCloud 同步；服务器发来的消息保持原文"))
+
+            Toggle(L("开机时启动"), isOn: Binding(
                 get: { launchAtLogin },
                 set: { newValue in
                     if let error = LoginItem.setEnabled(newValue) {
@@ -50,7 +58,7 @@ struct SettingsView: View {
                     launchAtLogin = newValue
                 }
             ))
-            .help("登录后自动在菜单栏运行 ntfyx")
+            .help(L("登录后自动在菜单栏运行 ntfyx"))
 
             if let loginError {
                 Text(loginError)
@@ -58,13 +66,13 @@ struct SettingsView: View {
                     .foregroundStyle(.red)
             }
 
-            Toggle("默认展开消息全文", isOn: $expandByDefault)
-                .help("长消息进入通知历史时即完整显示；单条仍可点击「收起」折回")
+            Toggle(L("默认展开消息全文"), isOn: $expandByDefault)
+                .help(L("长消息进入通知历史时即完整显示；单条仍可点击「收起」折回"))
 
-            Toggle("滚动即已读", isOn: $scrollMarksRead)
-                .help("浏览历史时，卡片有四分之一以上进入视口就标为已读，并像点击卡片那样同步到服务器；已读的条目仍留在列表里，不抽走、不跳位")
+            Toggle(L("滚动即已读"), isOn: $scrollMarksRead)
+                .help(L("浏览历史时，卡片有四分之一以上进入视口就标为已读，并像点击卡片那样同步到服务器；已读的条目仍留在列表里，不抽走、不跳位。窗口开着时刚到达的新消息不算，它仍然弹横幅并保持未读"))
 
-            LabeledContent("消息字号") {
+            LabeledContent(L("消息字号")) {
                 HStack(spacing: 8) {
                     Slider(value: $messageFontSize, in: 11...20, step: 1)
                         .frame(width: 160)
@@ -74,9 +82,9 @@ struct SettingsView: View {
                         .frame(width: 34, alignment: .trailing)
                 }
             }
-            .help("通知历史中消息正文的字体大小，Markdown 标题随字号等比缩放")
+            .help(L("通知历史中消息正文的字体大小，Markdown 标题随字号等比缩放"))
         } header: {
-            Text("通用")
+            Text(L("通用"))
         }
     }
 
@@ -91,17 +99,17 @@ struct SettingsView: View {
             Button {
                 viewModel.addServer()
             } label: {
-                Label("添加服务器", systemImage: "plus")
+                Label(L("添加服务器"), systemImage: "plus")
             }
             .buttonStyle(.borderless)
         } header: {
             HStack {
-                Text("ntfy 服务器")
+                Text(L("ntfy 服务器"))
                 if viewModel.hasUnsavedChanges {
                     Circle()
                         .fill(.orange)
                         .frame(width: 6, height: 6)
-                        .help("有未保存的更改")
+                        .help(L("有未保存的更改"))
                 }
             }
         }
@@ -111,14 +119,14 @@ struct SettingsView: View {
 
     private var iCloudSyncSection: some View {
         Section {
-            Toggle("通过 iCloud 同步配置", isOn: Binding(
+            Toggle(L("通过 iCloud 同步配置"), isOn: Binding(
                 get: { syncService.isEnabled },
                 set: { syncService.setEnabled($0) }
             ))
-            .help("在各台 Mac 之间同步服务器与主题配置。消息不经 iCloud，仍直接从 ntfy 服务器获取。")
+            .help(L("在各台 Mac 之间同步服务器与主题配置。消息不经 iCloud，仍直接从 ntfy 服务器获取。"))
 
             if syncService.isEnabled {
-                LabeledContent("同步文件夹") {
+                LabeledContent(L("同步文件夹")) {
                     HStack(spacing: 8) {
                         Text(syncDirectory)
                             .font(.caption)
@@ -126,12 +134,12 @@ struct SettingsView: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .frame(maxWidth: 250, alignment: .trailing)
-                        Button("选择…") { chooseSyncDirectory() }
+                        Button(L("选择…")) { chooseSyncDirectory() }
                     }
                 }
 
                 if !syncService.directoryOverride.isEmpty {
-                    Button("改用 iCloud Drive") {
+                    Button(L("改用 iCloud Drive")) {
                         syncService.setDirectory("")
                         syncDirectory = syncService.syncDirectory
                     }
@@ -143,16 +151,16 @@ struct SettingsView: View {
                 Button {
                     syncService.syncNow()
                 } label: {
-                    Label("立即同步", systemImage: "arrow.triangle.2.circlepath")
+                    Label(L("立即同步"), systemImage: "arrow.triangle.2.circlepath")
                 }
                 .buttonStyle(.borderless)
 
-                Text("同步文件不包含服务器令牌：每台 Mac 的令牌只存在各自的钥匙串里，新加入同步的 Mac 需自行粘贴一次。脚本、图标路径、通知动作和本地服务端口也只留在本机，不参与同步。")
+                Text(L("同步文件不包含服务器令牌：每台 Mac 的令牌只存在各自的钥匙串里，新加入同步的 Mac 需自行粘贴一次。脚本、图标路径、通知动作和本地服务端口也只留在本机，不参与同步。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("iCloud 同步")
+            Text(L("iCloud 同步"))
         }
     }
 
@@ -162,15 +170,15 @@ struct SettingsView: View {
         case .off:
             EmptyView()
         case .waiting:
-            Label("等待首次同步…", systemImage: "icloud.and.arrow.fill")
+            Label(L("等待首次同步…"), systemImage: "icloud.and.arrow.fill")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         case .syncing:
-            Label("正在同步…", systemImage: "arrow.triangle.2.circlepath")
+            Label(L("正在同步…"), systemImage: "arrow.triangle.2.circlepath")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         case .synced(let date):
-            Label("上次同步：\(SyncTimeFormat.string(date))", systemImage: "checkmark.icloud.fill")
+            Label(LF("上次同步：%@", SyncTimeFormat.string(date)), systemImage: "checkmark.icloud.fill")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         case .failed(let message):
@@ -185,8 +193,8 @@ struct SettingsView: View {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.prompt = "选择"
-        panel.message = "选择存放 ntfyx 同步配置文件的文件夹"
+        panel.prompt = L("选择")
+        panel.message = L("选择存放 ntfyx 同步配置文件的文件夹")
         panel.directoryURL = URL(fileURLWithPath: syncService.syncDirectory, isDirectory: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         syncService.setDirectory(url.path)
@@ -198,17 +206,17 @@ struct SettingsView: View {
     private var localServerSection: some View {
         Section {
             HStack {
-                Text("端口")
+                Text(L("端口"))
                     .foregroundStyle(.secondary)
                 Spacer()
                 TextField("", text: $viewModel.localServerPort)
                     .textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("端口")
+                    .accessibilityLabel(L("端口"))
                     .frame(width: 100)
                     .multilineTextAlignment(.trailing)
             }
 
-            Text("端口范围须为 1024–65535；留空表示禁用本地通知服务。")
+            Text(L("端口范围须为 1024–65535；留空表示禁用本地通知服务。"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -219,7 +227,7 @@ struct SettingsView: View {
                 )
             }
         } header: {
-            Text("本地通知服务")
+            Text(L("本地通知服务"))
         }
     }
 
@@ -261,7 +269,7 @@ struct SettingsView: View {
                 HStack(spacing: 4) {
                     Image(systemName: copiedCommand == command ? "checkmark.circle.fill" : "doc.on.doc")
                         .font(.caption)
-                    Text(copiedCommand == command ? "已拷贝" : "拷贝")
+                    Text(copiedCommand == command ? L("已拷贝") : L("拷贝"))
                         .font(.caption)
                         .fontWeight(.medium)
                 }
@@ -274,7 +282,7 @@ struct SettingsView: View {
                 )
             }
             .buttonStyle(.plain)
-            .help("拷贝到剪贴板")
+            .help(L("拷贝到剪贴板"))
         }
         .padding(10)
         .background(
@@ -308,7 +316,7 @@ struct SettingsView: View {
                     Image(systemName: "doc.text")
                 }
                 .buttonStyle(.borderless)
-                .help("在编辑器中打开配置文件")
+                .help(L("在编辑器中打开配置文件"))
 
                 if let error = viewModel.saveError {
                     HStack(spacing: 4) {
@@ -323,12 +331,12 @@ struct SettingsView: View {
 
                 Spacer()
 
-                Button("取消") {
+                Button(L("取消")) {
                     viewModel.cancel()
                 }
                 .keyboardShortcut(.escape, modifiers: [])
 
-                Button("保存") {
+                Button(L("保存")) {
                     viewModel.save()
                 }
                 .keyboardShortcut(.return, modifiers: .command)
@@ -363,54 +371,54 @@ private struct ServerRowView: View {
 
                 HStack {
                     if server.token.isEmpty {
-                        Text("令牌：未配置")
+                        Text(L("令牌：未配置"))
                             .foregroundStyle(.secondary)
                     } else if server.storeInKeychain {
-                        Label("令牌存储于钥匙串", systemImage: "key.fill")
+                        Label(L("令牌存储于钥匙串"), systemImage: "key.fill")
                             .foregroundStyle(.secondary)
                     } else {
-                        Label("令牌存储于配置文件", systemImage: "doc.text")
+                        Label(L("令牌存储于配置文件"), systemImage: "doc.text")
                             .foregroundStyle(.secondary)
                     }
 
                     Spacer()
 
-                    Button("管理…") {
+                    Button(L("管理…")) {
                         showTokenSheet = true
                     }
                 }
 
-                Toggle("重连时拉取错过的消息", isOn: $server.fetchMissed)
+                Toggle(L("重连时拉取错过的消息"), isOn: $server.fetchMissed)
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: 8) {
                     Button {
                         viewModel.testConnection(for: server)
                     } label: {
-                        Label("测试连接", systemImage: "bolt.horizontal.circle")
+                        Label(L("测试连接"), systemImage: "bolt.horizontal.circle")
                     }
                     .buttonStyle(.borderless)
                     .disabled(server.url.trimmingCharacters(in: .whitespaces).isEmpty)
-                    .help("按当前填写的地址与令牌探测服务器（无需先保存）")
+                    .help(L("按当前填写的地址与令牌探测服务器（无需先保存）"))
 
                     testResultView(viewModel.serverTestStates[server.id])
                     Spacer()
                 }
 
                 restrictionRow(
-                    title: "允许跳转方案",
-                    offLabel: "默认 (http/https)",
+                    title: L("允许跳转方案"),
+                    offLabel: L("默认 (http/https)"),
                     placeholder: "http, https, myapp",
-                    help: "限制该服务器消息可打开的 URL 方案；自定义列表留空等于全部禁止",
+                    help: L("限制该服务器消息可打开的 URL 方案；自定义列表留空等于全部禁止"),
                     mode: $server.schemesMode,
                     input: $server.schemesInput
                 )
 
                 restrictionRow(
-                    title: "信任域名",
-                    offLabel: "不限制",
+                    title: L("信任域名"),
+                    offLabel: L("不限制"),
                     placeholder: "*.example.com, ntfy.sh",
-                    help: "白名单：仅所列域名的链接可直接打开；*. 前缀匹配其子域；自定义列表留空等于全部禁止",
+                    help: L("白名单：仅所列域名的链接可直接打开；*. 前缀匹配其子域；自定义列表留空等于全部禁止"),
                     mode: $server.domainsMode,
                     input: $server.domainsInput
                 )
@@ -430,7 +438,7 @@ private struct ServerRowView: View {
                     Button {
                         viewModel.addTopic(to: server.id)
                     } label: {
-                        Label("添加主题", systemImage: "plus")
+                        Label(L("添加主题"), systemImage: "plus")
                     }
                     .buttonStyle(.borderless)
 
@@ -439,7 +447,7 @@ private struct ServerRowView: View {
                     Button(role: .destructive) {
                         viewModel.removeServer(server)
                     } label: {
-                        Text("删除此服务器")
+                        Text(L("删除此服务器"))
                     }
                     .buttonStyle(.borderless)
                     .font(.caption)
@@ -451,10 +459,10 @@ private struct ServerRowView: View {
                 Circle()
                     .fill(connectionColor(for: server.url))
                     .frame(width: 8, height: 8)
-                Text(server.url.isEmpty ? "新服务器" : server.url)
+                Text(server.url.isEmpty ? L("新服务器") : server.url)
                     .fontWeight(.medium)
                 Spacer()
-                Text("\(server.topics.count) 个主题")
+                Text(LF("%d 个主题", server.topics.count))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -479,8 +487,8 @@ private struct ServerRowView: View {
                 .foregroundStyle(.secondary)
             Picker("", selection: mode) {
                 Text(offLabel).tag(URLRestriction.off)
-                Text("自定义列表").tag(URLRestriction.custom)
-                Text("全部禁止").tag(URLRestriction.denyAll)
+                Text(L("自定义列表")).tag(URLRestriction.custom)
+                Text(L("全部禁止")).tag(URLRestriction.denyAll)
             }
             .labelsHidden()
             .pickerStyle(.menu)
@@ -504,17 +512,17 @@ private struct ServerRowView: View {
             ProgressView().controlSize(.small)
         case .reachable(let version):
             Label(
-                version.map { "连接正常 · v\($0)" } ?? "连接正常",
+                version.map { LF("连接正常 · v%@", $0) } ?? L("连接正常"),
                 systemImage: "checkmark.circle.fill"
             )
             .foregroundStyle(.green)
             .font(.caption)
         case .tokenRejected:
-            Label("令牌被服务器拒绝", systemImage: "key.slash")
+            Label(L("令牌被服务器拒绝"), systemImage: "key.slash")
                 .foregroundStyle(.red)
                 .font(.caption)
         case .failed(let reason):
-            Label("连接失败：\(reason)", systemImage: "xmark.circle.fill")
+            Label(LF("连接失败：%@", reason), systemImage: "xmark.circle.fill")
                 .foregroundStyle(.red)
                 .font(.caption)
                 .lineLimit(1)

@@ -12,7 +12,7 @@ enum AttachmentService {
 
         var errorDescription: String? {
             switch self {
-            case .invalidURL: return "附件地址无效"
+            case .invalidURL: return L10n.text("附件地址无效")
             case .http(let status): return "HTTP \(status)"
             }
         }

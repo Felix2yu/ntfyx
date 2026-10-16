@@ -24,10 +24,10 @@ public struct SettingsRootView: View {
         Group {
             if let viewModel {
                 SettingsView(viewModel: viewModel, syncService: syncService)
-                    .navigationTitle("ntfyx 设置")
+                    .navigationTitle(L("ntfyx 设置"))
             } else {
                 ProgressView()
-                    .navigationTitle("ntfyx 设置")
+                    .navigationTitle(L("ntfyx 设置"))
             }
         }
         .onAppear {

@@ -24,6 +24,12 @@ jobs:
       - name: Build
         run: swift build -c release
 
+      # Every UI string is a Chinese-keyed lookup; this catches keys with no English value,
+      # translations that lost a format specifier, and call sites hiding a key behind an
+      # expression. LocalizationTests covers the same ground from inside `swift test`.
+      - name: Check translation catalog
+        run: python3 tools/l10n_catalog.py check
+
       # Bundled before the tests so a run with a failing test still leaves a runnable .app
       # to try out. build-app.sh's own `swift build -c release` is a no-op here.
       - name: Build app bundle

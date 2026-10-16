@@ -41,24 +41,24 @@ struct PermissionPromptView: View {
     private var message: String {
         switch state.phase {
         case .checking:
-            return "正在检查通知权限…"
+            return L("正在检查通知权限…")
         case .readyToRequest:
-            return "ntfyx 需要权限才能发送通知。\n\n点击下方按钮以请求权限。"
+            return L("ntfyx 需要权限才能发送通知。\n\n点击下方按钮以请求权限。")
         case .requesting:
-            return "正在请求权限…"
+            return L("正在请求权限…")
         case .denied:
-            return "通知权限未授予。\n\n请前往 系统设置 → 通知 → ntfyx 手动开启。"
+            return L("通知权限未授予。\n\n请前往 系统设置 → 通知 → ntfyx 手动开启。")
         case .finished(let granted):
-            return granted ? "权限已授予，通知功能已开启。" : "通知权限未授予。"
+            return granted ? L("权限已授予，通知功能已开启。") : L("通知权限未授予。")
         }
     }
 
     private var buttonTitle: String? {
         switch state.phase {
         case .readyToRequest, .requesting:
-            return "请求权限"
+            return L("请求权限")
         case .denied:
-            return "打开系统设置"
+            return L("打开系统设置")
         case .checking, .finished:
             return nil
         }

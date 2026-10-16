@@ -14,6 +14,10 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
         // The run loop is already running here, so the old 0.1 s startup timers are gone.
         AppMode.configure(arguments: CommandLine.arguments)
 
+        // Resolve the interface language up front: App Intents metadata is handed to the
+        // system without any view being drawn, so nothing else would touch the locale.
+        _ = AppLocale.shared
+
         NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: nil,

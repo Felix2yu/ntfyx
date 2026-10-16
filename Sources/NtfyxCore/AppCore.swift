@@ -4,7 +4,11 @@ import AppKit
 
 /// App constants
 public enum AppConstants {
-    public static let bundleIdentifier = "com.laurentftech.ntfyx"
+    public static let bundleIdentifier = "im.yufei.ntfyx"
+
+    /// The identifier this app shipped under before the rename. Its preference domain is
+    /// carried over once, by `AppSettings.migrateLegacyPreferences()`.
+    public static let legacyBundleIdentifier = "com.laurentftech.ntfyx"
 
     /// Returns the bundle identifier, falling back to hardcoded value if running via symlink
     public static var effectiveBundleIdentifier: String {
@@ -27,7 +31,7 @@ private func fatalStartup(_ message: String, details: String? = nil) -> Never {
         alert.messageText = message
         alert.informativeText = details ?? ""
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "好")
+        alert.addButton(withTitle: L("好"))
         alert.runModal()
     } else {
         print(message)
@@ -265,14 +269,14 @@ public final class Ntfyx {
                 didCreateInitialConfig = true
                 Log.info("未找到配置文件，已在 \(starterPath) 创建初始配置。")
             } catch {
-                fatalStartup("未找到配置文件，且创建初始配置失败。", details: "\(error)")
+                fatalStartup(L("未找到配置文件，且创建初始配置失败。"), details: "\(error)")
             }
         } catch {
-            fatalStartup("加载配置失败。", details: "\(error)")
+            fatalStartup(L("加载配置失败。"), details: "\(error)")
         }
 
         guard let config = configStore.config else {
-            fatalStartup("配置无效。")
+            fatalStartup(L("配置无效。"))
         }
 
         if config.subscriptions.isEmpty {
@@ -351,6 +355,12 @@ public final class Ntfyx {
         }
 
         let notificationManager = ensureNotificationManager()
+
+        // Notification categories live in the system, so a language switch only reaches a
+        // banner's buttons once the registered set is dropped and rebuilt on the next message.
+        AppLocale.shared.onLanguageChange = {
+            notificationManager.clearCategories()
+        }
 
         Task { @MainActor in
             // Check authorization status before starting the service

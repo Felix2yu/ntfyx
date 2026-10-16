@@ -42,10 +42,10 @@ public struct HistoryView: View {
         .toolbar {
             // The system supplies the official sidebar toggle in the toolbar.
             ToolbarItem(placement: .primaryAction) {
-                TextField("全局搜索", text: $viewModel.globalQuery)
+                TextField(L("全局搜索"), text: $viewModel.globalQuery)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 180)
-                    .help("在所有主题的标题、正文与名称中搜索")
+                    .help(L("在所有主题的标题、正文与名称中搜索"))
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -53,7 +53,7 @@ public struct HistoryView: View {
                 } label: {
                     Image(systemName: "checkmark.circle")
                 }
-                .help(viewModel.totalUnread > 0 ? "全部标记已读（\(viewModel.totalUnread) 条未读）" : "没有未读消息")
+                .help(viewModel.totalUnread > 0 ? LF("全部标记已读（%d 条未读）", viewModel.totalUnread) : L("没有未读消息"))
                 .disabled(viewModel.totalUnread == 0)
             }
         }
@@ -64,23 +64,23 @@ public struct HistoryView: View {
             TopicBrowserView(viewModel: viewModel)
         }
         .confirmationDialog(
-            "退役主题「\(viewModel.confirmRetireTopic.map { viewModel.label(for: $0) } ?? "")」？",
+            LF("退役主题「%@」？", viewModel.confirmRetireTopic.map { viewModel.label(for: $0) } ?? ""),
             isPresented: Binding(
                 get: { viewModel.confirmRetireTopic != nil },
                 set: { if !$0 { viewModel.confirmRetireTopic = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("退役并从服务器删除", role: .destructive) {
+            Button(L("退役并从服务器删除"), role: .destructive) {
                 if let ref = viewModel.confirmRetireTopic {
                     viewModel.retireTopic(ref)
                 }
             }
-            Button("取消", role: .cancel) {
+            Button(L("取消"), role: .cancel) {
                 viewModel.confirmRetireTopic = nil
             }
         } message: {
-            Text("服务器会丢弃该主题的全部缓存消息与附件，其他设备也会随之清空；服务器上的主题配置不会被改动。本机的历史与订阅保留。")
+            Text(L("服务器会丢弃该主题的全部缓存消息与附件，其他设备也会随之清空；服务器上的主题配置不会被改动。本机的历史与订阅保留。"))
         }
     }
 
@@ -97,7 +97,7 @@ public struct HistoryView: View {
             TopicDetailView(viewModel: viewModel, topicRef: ref)
                 .id(ref)  // reset scroll state when switching topics
         } else {
-            Text("选择一个主题查看历史消息")
+            Text(L("选择一个主题查看历史消息"))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -111,7 +111,7 @@ public struct HistoryView: View {
             set: { viewModel.selection = $0 }
         )) {
             if viewModel.groups.isEmpty {
-                Text("未配置服务器或主题")
+                Text(L("未配置服务器或主题"))
                     .foregroundStyle(.secondary)
             }
             ForEach(viewModel.groups) { group in
@@ -129,7 +129,7 @@ public struct HistoryView: View {
         .safeAreaInset(edge: .bottom) {
             HStack {
                 if viewModel.totalUnread > 0 {
-                    Text("\(viewModel.totalUnread) 条未读")
+                    Text(LF("%d 条未读", viewModel.totalUnread))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -138,10 +138,10 @@ public struct HistoryView: View {
                     isBrowserPresented = true
                     viewModel.loadServerTopics()
                 } label: {
-                    Label("服务器主题", systemImage: "antenna.radiowaves.left.and.right")
+                    Label(L("服务器主题"), systemImage: "antenna.radiowaves.left.and.right")
                 }
                 .font(.footnote)
-                .help("查看服务器上有缓存的主题，点订阅即可加入")
+                .help(L("查看服务器上有缓存的主题，点订阅即可加入"))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -154,7 +154,7 @@ public struct HistoryView: View {
             Image(systemName: "square.stack.3d.up")
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
-            Text("全部主题")
+            Text(L("全部主题"))
                 .lineLimit(1)
             Spacer()
             unreadBadge(viewModel.unread(forServer: serverURL))
@@ -168,12 +168,12 @@ public struct HistoryView: View {
                 .frame(width: 16)
             Text(entry.label)
                 .lineLimit(1)
-                .help(entry.label == entry.ref.topic ? Text(verbatim: "") : Text("主题 id：\(entry.ref.topic)"))
+                .help(entry.label == entry.ref.topic ? Text(verbatim: "") : Text(LF("主题 id：%@", entry.ref.topic)))
             Spacer()
             unreadBadge(entry.unread)
         }
         .contextMenu {
-            Button("从服务器退役…", role: .destructive) {
+            Button(L("从服务器退役…"), role: .destructive) {
                 viewModel.confirmRetireTopic = entry.ref
             }
         }
@@ -197,14 +197,14 @@ public struct HistoryView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Text(viewModel.isGlobalSearching
-                    ? "搜索中…"
+                    ? L("搜索中…")
                     : viewModel.globalResults.count >= HistoryViewModel.globalSearchCap
-                        ? "前 \(viewModel.globalResults.count) 条结果"
-                        : "\(viewModel.globalResults.count) 条结果")
+                        ? LF("前 %d 条结果", viewModel.globalResults.count)
+                        : LF("%d 条结果", viewModel.globalResults.count))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("退出搜索") {
+                Button(L("退出搜索")) {
                     viewModel.globalQuery = ""
                 }
                 .buttonStyle(.borderless)
@@ -223,7 +223,7 @@ public struct HistoryView: View {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 32))
                             .foregroundStyle(.tertiary)
-                        Text("没有匹配的消息")
+                        Text(L("没有匹配的消息"))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -261,7 +261,7 @@ private struct TopicBrowserView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("服务器主题")
+                Text(L("服务器主题"))
                     .font(.headline)
                 Spacer()
                 Button {
@@ -270,8 +270,8 @@ private struct TopicBrowserView: View {
                     Image(systemName: "arrow.clockwise")
                 }
                 .disabled(viewModel.isLoadingServerTopics)
-                .help("重新向服务器查询主题列表")
-                Button("完成") {
+                .help(L("重新向服务器查询主题列表"))
+                Button(L("完成")) {
                     dismiss()
                 }
             }
@@ -297,7 +297,7 @@ private struct TopicBrowserView: View {
                         }
                     }
                     if !viewModel.isLoadingServerTopics && browserSections.isEmpty {
-                        Text("没有查询到主题")
+                        Text(L("没有查询到主题"))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -308,7 +308,7 @@ private struct TopicBrowserView: View {
                 Divider()
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
-                    Text("正在查询服务器主题…")
+                    Text(L("正在查询服务器主题…"))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -317,24 +317,24 @@ private struct TopicBrowserView: View {
         }
         .frame(width: Self.windowWidth, height: 420)
         .confirmationDialog(
-            "清空主题「\(pendingRetire.map { viewModel.label(for: TopicRef(serverURL: $0.serverURL, topic: $0.topic)) } ?? "")」的服务器缓存？",
+            LF("清空主题「%@」的服务器缓存？", pendingRetire.map { viewModel.label(for: TopicRef(serverURL: $0.serverURL, topic: $0.topic)) } ?? ""),
             isPresented: Binding(
                 get: { pendingRetire != nil },
                 set: { if !$0 { pendingRetire = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("从服务器删除", role: .destructive) {
+            Button(L("从服务器删除"), role: .destructive) {
                 if let entry = pendingRetire {
                     viewModel.retireTopic(TopicRef(serverURL: entry.serverURL, topic: entry.topic))
                 }
                 pendingRetire = nil
             }
-            Button("取消", role: .cancel) {
+            Button(L("取消"), role: .cancel) {
                 pendingRetire = nil
             }
         } message: {
-            Text("服务器会丢弃该主题的全部缓存消息与附件，其他设备也会随之清空；有新消息发布时主题会重新出现在列表里。")
+            Text(L("服务器会丢弃该主题的全部缓存消息与附件，其他设备也会随之清空；有新消息发布时主题会重新出现在列表里。"))
         }
         .task {
             if viewModel.serverTopics.isEmpty { viewModel.loadServerTopics() }
@@ -386,7 +386,7 @@ private struct TopicBrowserView: View {
         let topic = entry.topic
         switch entry.status {
         case .subscribed:
-            Text("已订阅")
+            Text(L("已订阅"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button {
@@ -395,9 +395,9 @@ private struct TopicBrowserView: View {
                 Image(systemName: "bell.slash")
             }
             .buttonStyle(.borderless)
-            .help("取消订阅（本机会一并清掉该主题的历史）")
+            .help(L("取消订阅（本机会一并清掉该主题的历史）"))
         case .available:
-            Button("订阅") {
+            Button(L("订阅")) {
                 viewModel.subscribe(serverURL: serverURL, topic: topic)
             }
             Button {
@@ -406,12 +406,12 @@ private struct TopicBrowserView: View {
                 Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
-            .help("清空该主题在服务器上的缓存，需对该主题有写入权限")
+            .help(L("清空该主题在服务器上的缓存，需对该主题有写入权限"))
         case .goneOnServer:
-            Text("服务器已无缓存")
+            Text(L("服务器已无缓存"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Button("清除本地历史") {
+            Button(L("清除本地历史")) {
                 viewModel.clearLocalHistory(serverURL: serverURL, topic: topic)
             }
         }
@@ -466,6 +466,6 @@ private struct GlobalSearchResultRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("打开主题「\(topicLabel)」")
+        .help(LF("打开主题「%@」", topicLabel))
     }
 }

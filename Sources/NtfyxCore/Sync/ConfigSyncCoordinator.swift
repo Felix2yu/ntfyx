@@ -163,7 +163,7 @@ actor ConfigSyncCoordinator {
         guard snapshot.isDefaultPath else {
             // A `serve --config <PATH>` instance owns a file this feature was never meant
             // to publish; syncing it would push one machine's private config onto everyone.
-            emit(.failed("配置同步只作用于默认配置文件 \(ConfigFile.defaultConfigPath)"))
+            emit(.failed(L10n.format("配置同步只作用于默认配置文件 %@", ConfigFile.defaultConfigPath)))
             return
         }
 

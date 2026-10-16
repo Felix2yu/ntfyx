@@ -12,6 +12,8 @@ if [ ! -d ".build/release/ntfyx.app" ]; then
 fi
 
 echo "1. Resetting any previous permission state..."
+tccutil reset UserNotifications im.yufei.ntfyx 2>/dev/null || true
+# The app lived under com.laurentftech.ntfyx before the rename; drop the stale row too.
 tccutil reset UserNotifications com.laurentftech.ntfyx 2>/dev/null || true
 
 echo "2. Opening the app to trigger permission request..."

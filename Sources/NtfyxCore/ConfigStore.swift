@@ -116,7 +116,7 @@ public final class ConfigStore {
             throw ConfigError.decodingError(NSError(
                 domain: "ConfigStore",
                 code: 10,
-                userInfo: [NSLocalizedDescriptionKey: "配置中没有服务器 \(serverURL)"]
+                userInfo: [NSLocalizedDescriptionKey: LF("配置中没有服务器 %@", serverURL)]
             ))
         }
 

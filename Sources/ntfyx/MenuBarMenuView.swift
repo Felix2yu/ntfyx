@@ -24,52 +24,52 @@ struct MenuBarMenuView: View {
 
         Divider()
 
-        Toggle("暂停通知", isOn: pauseBinding)
-            .help("暂停横幅通知；消息仍会写入历史并计入未读")
+        Toggle(L("暂停通知"), isOn: pauseBinding)
+            .help(L("暂停横幅通知；消息仍会写入历史并计入未读"))
             .keyboardShortcut("p", modifiers: .command)
 
         // ⇧⌘H keeps ⌘H (隐藏应用) free for the app's main menu.
-        Button("通知历史…") {
+        Button(L("通知历史…")) {
             openWindow(id: "history")
         }
         .keyboardShortcut("h", modifiers: [.command, .shift])
 
-        Button("设置…") {
+        Button(L("设置…")) {
             AppEnvironment.openSettings()
         }
         .keyboardShortcut(",", modifiers: .command)
 
-        Button("在 Finder 中显示配置") {
+        Button(L("在 Finder 中显示配置")) {
             AppActions.showConfigInFinder()
         }
 
-        Button("重载配置") {
+        Button(L("重载配置")) {
             env.reloadConfig()
         }
         .keyboardShortcut("r", modifiers: .command)
 
         if sync.isEnabled {
             syncStatusRow
-            Button("立即同步配置") {
+            Button(L("立即同步配置")) {
                 sync.syncNow()
             }
-            .help("与 iCloud Drive 中的配置立即合并；平时由配置改动与云端变更事件触发")
+            .help(L("与 iCloud Drive 中的配置立即合并；平时由配置改动与云端变更事件触发"))
         }
 
         Divider()
 
-        Button("查看日志…") {
+        Button(L("查看日志…")) {
             AppActions.viewLogs()
         }
         .keyboardShortcut("l", modifiers: [.command, .shift])
 
         Divider()
 
-        Button("关于 ntfyx") {
+        Button(L("关于 ntfyx")) {
             openWindow(id: "about")
         }
 
-        Button("退出 ntfyx") {
+        Button(L("退出 ntfyx")) {
             NSApp.terminate(nil)
         }
         .keyboardShortcut("q", modifiers: .command)
@@ -80,7 +80,7 @@ struct MenuBarMenuView: View {
     private var statusRow: some View {
         let line = table.statusLine
         let paused = NotificationPause.shared.isPaused
-        return Text(dotted(dotColor(line.dot), paused ? "\(line.text) · 通知已暂停" : line.text))
+        return Text(dotted(dotColor(line.dot), paused ? "\(line.text) · \(L("通知已暂停"))" : line.text))
     }
 
     private func issueRow(_ issue: ConnectionRegistry.ConfigIssue) -> some View {
@@ -89,9 +89,9 @@ struct MenuBarMenuView: View {
         let color: Color
         switch issue {
         case .warning(let text):
-            title = "⚠️ 配置警告"; message = text; color = Color(nsColor: .systemOrange)
+            title = L("⚠️ 配置警告"); message = text; color = Color(nsColor: .systemOrange)
         case .error(let text):
-            title = "⚠️ 配置错误"; message = text; color = Color(nsColor: .systemRed)
+            title = L("⚠️ 配置错误"); message = text; color = Color(nsColor: .systemRed)
         }
         return Text(tinted(title, color))
             .help(message)
@@ -134,16 +134,16 @@ struct MenuBarMenuView: View {
 
     private func stateText(_ state: ConnectionRegistry.ConnectionState) -> String {
         switch state {
-        case .connected: "已连接"
-        case .disconnected: "已断开"
-        case .connecting: "连接中…"
+        case .connected: L("已连接")
+        case .disconnected: L("已断开")
+        case .connecting: L("连接中…")
         }
     }
 
     private var serversMenu: some View {
-        Menu("服务器") {
+        Menu(L("服务器")) {
             if table.sortedStatuses.isEmpty {
-                Text("未配置服务器")
+                Text(L("未配置服务器"))
             } else {
                 ForEach(table.sortedStatuses, id: \.url) { status in
                     Button {
@@ -153,7 +153,7 @@ struct MenuBarMenuView: View {
                     } label: {
                         Text(dotted(dotColor(status.state), status.url))
                     }
-                    .help("\(stateText(status.state))\n主题：\(status.topics.map(\.label).joined(separator: ", "))")
+                    .help(LF("%1$@\n主题：%2$@", stateText(status.state), status.topics.map(\.label).joined(separator: ", ")))
 
                     ForEach(status.topics, id: \.id) { topic in
                         Text("    \(topic.label)")
@@ -168,16 +168,16 @@ struct MenuBarMenuView: View {
     private var syncStatusRow: some View {
         switch sync.status {
         case .off:
-            Text("iCloud 同步：已关闭")
+            Text(L("iCloud 同步：已关闭"))
         case .waiting:
-            Text("iCloud 同步：等待首次同步")
+            Text(L("iCloud 同步：等待首次同步"))
         case .syncing:
-            Text("iCloud 同步：正在同步…")
+            Text(L("iCloud 同步：正在同步…"))
         case .synced(let date):
-            Text("iCloud 同步：\(SyncTimeFormat.compactString(date))")
-                .help("上次同步：\(SyncTimeFormat.string(date))")
+            Text(LF("iCloud 同步：%@", SyncTimeFormat.compactString(date)))
+                .help(LF("上次同步：%@", SyncTimeFormat.string(date)))
         case .failed(let message):
-            Text(tinted("⚠️ iCloud 同步失败", Color(nsColor: .systemOrange)))
+            Text(tinted(L("⚠️ iCloud 同步失败"), Color(nsColor: .systemOrange)))
                 .help(message)
         }
     }

@@ -30,7 +30,7 @@ public final class ConnectionRegistry {
         }
 
         /// Hover text naming the English id, but only where it adds information to the label.
-        public var idTooltip: String { label == id ? "" : "主题 id：\(id)" }
+        public var idTooltip: String { label == id ? "" : L10n.format("主题 id：%@", id) }
     }
 
     public struct ServerConnectionStatus {
@@ -168,16 +168,16 @@ public final class ConnectionRegistry {
         let totalTopics = statuses.values.flatMap { $0.topics }.count
 
         if totalServers == 0 {
-            return StatusLine(dot: .none, text: "未配置服务器")
+            return StatusLine(dot: .none, text: L("未配置服务器"))
         } else if connectedServers == totalServers {
-            return StatusLine(dot: .green, text: "\(totalServers) 台服务器 · \(totalTopics) 个主题")
+            return StatusLine(dot: .green, text: LF("%1$d 台服务器 · %2$d 个主题", totalServers, totalTopics))
         } else if connectingServers > 0 && disconnectedServers == 0 && connectedServers == 0 {
-            return StatusLine(dot: .orangePulse, text: "连接中…")
+            return StatusLine(dot: .orangePulse, text: L("连接中…"))
         } else if disconnectedServers > 0 {
-            return StatusLine(dot: .red, text: "已连接 \(connectedServers)/\(totalServers) 台服务器")
+            return StatusLine(dot: .red, text: LF("已连接 %1$d/%2$d 台服务器", connectedServers, totalServers))
         } else {
             // Mixed state: some connected, some connecting.
-            return StatusLine(dot: .orangePulse, text: "已连接 \(connectedServers)/\(totalServers) 台服务器")
+            return StatusLine(dot: .orangePulse, text: LF("已连接 %1$d/%2$d 台服务器", connectedServers, totalServers))
         }
     }
 

@@ -9,7 +9,7 @@ import Foundation
 /// only when rows were actually removed, a wildcard change-bus post — is unchanged.
 @MainActor
 final class HistoryRetentionScheduler {
-    static let lastRunDefaultsKey = "historyLastRetentionRun"
+    static let lastRunDefaultsKey = AppSettings.lastRetentionRunKey
     static let dailyInterval: TimeInterval = 24 * 60 * 60
     static let dailyTolerance: TimeInterval = 6 * 60 * 60
 

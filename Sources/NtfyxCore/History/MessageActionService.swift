@@ -10,15 +10,15 @@ enum TopicActionError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .invalidURL(let url): return "服务器地址无效：\(url)"
-        case .invalidResponse: return "服务器返回了无法识别的响应"
+        case .invalidURL(let url): return L10n.format("服务器地址无效：%@", url)
+        case .invalidResponse: return L10n.text("服务器返回了无法识别的响应")
         case .httpStatus(let code):
             switch code {
-            case 401, 403: return "无权限（HTTP \(code)）：该服务器需要写入权限才能管理主题"
-            case 404: return "服务器上不存在该主题（HTTP 404）"
-            default: return "服务器返回 HTTP \(code)"
+            case 401, 403: return L10n.format("无权限（HTTP %1$d）：该服务器需要写入权限才能管理主题", code)
+            case 404: return L10n.text("服务器上不存在该主题（HTTP 404）")
+            default: return L10n.format("服务器返回 HTTP %d", code)
             }
-        case .badResponse: return "服务器返回了无法解析的主题列表"
+        case .badResponse: return L10n.text("服务器返回了无法解析的主题列表")
         }
     }
 }
@@ -412,23 +412,24 @@ enum MessageActionService {
     static func formattedTime(_ unixSeconds: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(unixSeconds))
         let interval = Date().timeIntervalSince(date)
+        let locale = Locale(identifier: L10n.language.localeIdentifier)
 
         if interval < 60 {
-            return "刚刚"
+            return L10n.text("刚刚")
         } else if interval < 24 * 3600 {
             let formatter = RelativeDateTimeFormatter()
-            formatter.locale = Locale(identifier: "zh_CN")
+            formatter.locale = locale
             formatter.unitsStyle = .abbreviated
             return formatter.localizedString(for: date, relativeTo: Date())
         } else if interval < 365 * 24 * 3600 {
             let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "zh_CN")
-            formatter.dateFormat = "M月d日 HH:mm"
+            formatter.locale = locale
+            formatter.dateFormat = L10n.text("M月d日 HH:mm")
             return formatter.string(from: date)
         } else {
             let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "zh_CN")
-            formatter.dateFormat = "yyyy年M月d日"
+            formatter.locale = locale
+            formatter.dateFormat = L10n.text("yyyy年M月d日")
             return formatter.string(from: date)
         }
     }

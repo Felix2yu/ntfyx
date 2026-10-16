@@ -23,9 +23,9 @@ enum LocalAPIToken {
         var errorDescription: String? {
             switch self {
             case .generateFailed(let status):
-                return "无法生成本地 API 令牌（SecRandomCopyBytes 返回 \(status)）"
+                return L10n.format("无法生成本地 API 令牌（SecRandomCopyBytes 返回 %d）", Int(status))
             case .writeFailed(let error):
-                return "无法写入本地 API 令牌文件：\(error.localizedDescription)"
+                return L10n.format("无法写入本地 API 令牌文件：%@", error.localizedDescription)
             }
         }
     }

@@ -55,6 +55,12 @@ public final class HistoryViewModel {
     }
 
     var messages: [StoredMessage] = []
+
+    /// Newest message time among the rows a user-driven load put on screen. A message newer
+    /// than this arrived *while the window was up*: it keeps its banner and its unread state
+    /// until the user acknowledges it, because an automatic read must never swallow a live
+    /// message the user is still waiting for.
+    private var scrollReadFrontier = 0
     var hasMoreMessages = false
     var isLoadingOlder = false
 
@@ -272,10 +278,14 @@ public final class HistoryViewModel {
         }
     }
 
-    func reloadMessages() {
+    /// - Parameter liveUpdate: true when the reload follows a store change (a message arrived or
+    ///   was edited) instead of a user action. Only user-driven loads move `scrollReadFrontier`,
+    ///   so the very list a live message lands on can never auto-read it.
+    func reloadMessages(liveUpdate: Bool = false) {
         guard let scope = messageScope else {
             messages = []
             hasMoreMessages = false
+            if !liveUpdate { scrollReadFrontier = 0 }
             return
         }
         loadGeneration += 1
@@ -296,6 +306,9 @@ public final class HistoryViewModel {
                 guard generation == self.loadGeneration else { return }  // stale response
                 self.messages = page
                 self.hasMoreMessages = page.count >= Self.pageSize
+                if !liveUpdate {
+                    self.scrollReadFrontier = page.map(\.time).max() ?? 0
+                }
             } catch {
                 Log.error("History: failed to load messages: \(error)")
             }
@@ -440,9 +453,11 @@ public final class HistoryViewModel {
     private var scrollReadSettleTask: Task<Void, Never>?
     private static let scrollReadSettleTime: TimeInterval = 0.25
 
-    /// Called for every card that scrolls into view while the setting is on.
+    /// Called for every card that scrolls into view while the setting is on. Only the backlog
+    /// the list was opened with is eligible: a message that lands while the window is up stays
+    /// unread — with its banner — until the user acknowledges it.
     func markReadOnScroll(_ stored: StoredMessage) {
-        guard !stored.isRead else { return }
+        guard !stored.isRead, stored.message.time <= scrollReadFrontier else { return }
         scrollReadPending[stored.id] = stored
         scrollReadSettleTask?.cancel()
         scrollReadSettleTask = Task { [weak self] in
@@ -540,9 +555,9 @@ public final class HistoryViewModel {
             return
         }
         if total > Self.serverMarkReadCap {
-            serverSyncNotice = "本地已全部标为已读；服务器已同步 \(synced) 条，其余超出单次上限 \(Self.serverMarkReadCap) 条未同步（限速保护）。"
+            serverSyncNotice = LF("本地已全部标为已读；服务器已同步 %1$d 条，其余超出单次上限 %2$d 条未同步（限速保护）。", synced, Self.serverMarkReadCap)
         } else {
-            serverSyncNotice = "本地已全部标为已读；服务器同步在 \(synced)/\(total) 处停止（离线或无写入权限）。"
+            serverSyncNotice = LF("本地已全部标为已读；服务器同步在 %1$d/%2$d 处停止（离线或无写入权限）。", synced, total)
         }
     }
 
@@ -610,9 +625,9 @@ public final class HistoryViewModel {
             if synced == total {
                 self.serverSyncNotice = nil
             } else if total > Self.serverClearCap {
-                self.serverSyncNotice = "本地已全部清空；服务器已删除 \(synced) 条，其余超出单次上限 \(Self.serverClearCap) 条未删除（限速保护）。"
+                self.serverSyncNotice = LF("本地已全部清空；服务器已删除 %1$d 条，其余超出单次上限 %2$d 条未删除（限速保护）。", synced, Self.serverClearCap)
             } else {
-                self.serverSyncNotice = "本地已全部清空；服务器删除在 \(synced)/\(total) 处停止（离线或无写入权限）。"
+                self.serverSyncNotice = LF("本地已全部清空；服务器删除在 %1$d/%2$d 处停止（离线或无写入权限）。", synced, total)
             }
         }
     }
@@ -625,7 +640,7 @@ public final class HistoryViewModel {
     func loadServerTopics() {
         guard let config = configStore.config, !config.servers.isEmpty else {
             serverTopics = [:]
-            serverTopicsError = "尚未配置服务器"
+            serverTopicsError = L("尚未配置服务器")
             return
         }
         guard !isLoadingServerTopics else { return }
@@ -753,7 +768,7 @@ public final class HistoryViewModel {
             do {
                 _ = try await self.topicRetrier(ref.serverURL, ref.topic, token)
             } catch {
-                self.serverTopicsError = "退役 \(self.label(for: ref)) 失败：\((error as? LocalizedError)?.errorDescription ?? "\(error)")"
+                self.serverTopicsError = LF("退役 %1$@ 失败：%2$@", self.label(for: ref), (error as? LocalizedError)?.errorDescription ?? "\(error)")
                 return
             }
             NotificationManager.shared.revoke(
@@ -809,7 +824,7 @@ public final class HistoryViewModel {
                 self.attachmentStates[attachment.url] = nil
                 NSWorkspace.shared.open(fileURL)
             } catch let error as AttachmentService.AttachmentError {
-                self.attachmentStates[attachment.url] = .failed(reason: error.errorDescription ?? "下载失败")
+                self.attachmentStates[attachment.url] = .failed(reason: error.errorDescription ?? L("下载失败"))
             } catch {
                 self.attachmentStates[attachment.url] = .failed(reason: error.localizedDescription)
             }
@@ -863,12 +878,12 @@ public final class HistoryViewModel {
         switch selection {
         case .topic(let selected):
             if isGlobal || refs.contains(selected) {
-                reloadMessages()
+                reloadMessages(liveUpdate: true)
             }
         case .serverAll(let serverURL):
             // The merged list is only interested in changes under its own server.
             if isGlobal || refs.contains(where: { $0.serverURL == serverURL }) {
-                reloadMessages()
+                reloadMessages(liveUpdate: true)
             }
         case nil:
             break

@@ -7,6 +7,10 @@ struct NtfyxApp: App {
     @State private var env = AppEnvironment.shared
 
     init() {
+        // Before any scene reads a preference: the app was renamed to a new bundle identifier,
+        // and preferences are stored per identifier.
+        AppSettings.migrateLegacyPreferences()
+
         // Commands that do not need the app lifecycle exit before scenes come up.
         switch AppMode.parse(CommandLine.arguments) {
         case .help:
@@ -39,19 +43,19 @@ struct NtfyxApp: App {
         // Single-instance on purpose: every "通知历史" entry point funnels through
         // openWindow(id: "history"), and a Window scene re-activates the existing window
         // instead of stacking another copy of the same shared view model.
-        Window("通知历史", id: "history") {
+        Window(L("通知历史"), id: "history") {
             HistorySceneRoot()
                 .environment(env)
         }
         .defaultSize(width: 950, height: 620)
 
-        Window("关于 ntfyx", id: "about") {
+        Window(L("关于 ntfyx"), id: "about") {
             AboutView()
                 .environment(env)
         }
         .windowResizability(.contentSize)
 
-        Window("ntfyx - 通知权限设置", id: "permission") {
+        Window(L("ntfyx - 通知权限设置"), id: "permission") {
             PermissionPromptView()
         }
         .windowResizability(.contentSize)

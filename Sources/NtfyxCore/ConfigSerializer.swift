@@ -207,8 +207,8 @@ public enum ConfigFile {
 
         if worldWritable {
             throw ConfigError.insecureFilePermissions(
-                "配置文件 \(path) 权限过于开放（任意用户可写，权限：\(String(posixPermissions, radix: 8))）。" +
-                "请执行：chmod o-w \"\(path)\""
+                L10n.format("配置文件 %1$@ 权限过于开放（任意用户可写，权限：%2$@）。请执行：chmod o-w \"%3$@\"",
+                            path, String(posixPermissions, radix: 8), path)
             )
         }
     }
@@ -231,7 +231,7 @@ public enum ConfigFile {
         // Check root level
         for key in yaml.keys {
             if !knownRootKeys.contains(key) {
-                warnings.append("根级别存在未知配置项 '\(key)'")
+                warnings.append(L10n.format("根级别存在未知配置项 '%@'", key))
             }
         }
 
@@ -241,7 +241,7 @@ public enum ConfigFile {
                 let serverUrl = server["url"] as? String ?? "server[\(serverIndex)]"
                 for key in server.keys {
                     if !knownServerKeys.contains(key) {
-                        warnings.append("服务器 '\(serverUrl)' 中存在未知配置项 '\(key)'")
+                        warnings.append(L10n.format("服务器 '%1$@' 中存在未知配置项 '%2$@'", serverUrl, key))
                     }
                 }
 
@@ -251,7 +251,7 @@ public enum ConfigFile {
                         let topicName = topic["name"] as? String ?? "topic[\(topicIndex)]"
                         for key in topic.keys {
                             if !knownTopicKeys.contains(key) {
-                                warnings.append("主题 '\(topicName)'（服务器：\(serverUrl)）中存在未知配置项 '\(key)'")
+                                warnings.append(L10n.format("主题 '%1$@'（服务器：%2$@）中存在未知配置项 '%3$@'", topicName, serverUrl, key))
                             }
                         }
 
@@ -261,7 +261,7 @@ public enum ConfigFile {
                                 let actionTitle = action["title"] as? String ?? "action[\(actionIndex)]"
                                 for key in action.keys {
                                     if !knownActionKeys.contains(key) {
-                                        warnings.append("动作 '\(actionTitle)'（主题：\(topicName)）中存在未知配置项 '\(key)'")
+                                        warnings.append(L10n.format("动作 '%1$@'（主题：%2$@）中存在未知配置项 '%3$@'", actionTitle, topicName, key))
                                     }
                                 }
                             }

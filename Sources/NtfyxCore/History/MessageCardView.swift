@@ -125,11 +125,11 @@ struct MessageCardView: View {
         HStack(spacing: 2) {
             cardButton(
                 symbol: stored.isRead ? "envelope.open" : "envelope.badge",
-                help: stored.isRead ? "标为未读" : "标为已读",
+                help: stored.isRead ? L("标为未读") : L("标为已读"),
                 action: onToggleRead
             )
-            cardButton(symbol: "doc.on.doc", help: "复制消息内容", action: onCopy)
-            cardButton(symbol: "trash", help: "删除这条消息", action: onDelete)
+            cardButton(symbol: "doc.on.doc", help: L("复制消息内容"), action: onCopy)
+            cardButton(symbol: "trash", help: L("删除这条消息"), action: onDelete)
         }
         .padding(.horizontal, 5)
         .padding(.vertical, 3)
@@ -174,7 +174,7 @@ struct MessageCardView: View {
                     Button {
                         toggleExpanded()
                     } label: {
-                        Label(expanded ? "收起" : "展开全文",
+                        Label(expanded ? L("收起") : L("展开全文"),
                               systemImage: expanded ? "chevron.up" : "chevron.down")
                             .font(.caption)
                     }
@@ -232,7 +232,7 @@ struct MessageCardView: View {
             .foregroundStyle(.link)
             .contentShape(Rectangle())
             .onTapGesture { onOpenURL(click) }
-            .help("打开链接")
+            .help(L("打开链接"))
         }
     }
 
@@ -275,7 +275,7 @@ struct MessageCardView: View {
             }
             .buttonStyle(.plain)
             .disabled(attachmentState == .downloading)
-            .help("下载并在默认应用中预览附件")
+            .help(L("下载并在默认应用中预览附件"))
         }
     }
 
@@ -311,9 +311,9 @@ struct MessageCardView: View {
 
     private func helpForAction(_ action: NtfyMessage.NtfyAction) -> String {
         switch action.action {
-        case "view": return "打开 \(action.url ?? "")"
-        case "http": return "发送 \(action.method ?? "POST") 请求"
-        case "copy": return "复制到剪贴板"
+        case "view": return LF("打开 %@", action.url ?? "")
+        case "http": return LF("发送 %@ 请求", action.method ?? "POST")
+        case "copy": return L("复制到剪贴板")
         default: return action.action
         }
     }

@@ -29,7 +29,7 @@ struct ServerHistoryView: View {
     private var toolbar: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 1) {
-                Text("全部主题")
+                Text(L("全部主题"))
                     .font(.headline)
                 Text(serverURL)
                     .font(.caption)
@@ -42,18 +42,18 @@ struct ServerHistoryView: View {
             Button {
                 viewModel.markServerAllRead(serverURL: serverURL)
             } label: {
-                Label("全部已读", systemImage: "checkmark.circle")
+                Label(L("全部已读"), systemImage: "checkmark.circle")
             }
             .disabled(viewModel.unread(forServer: serverURL) == 0)
-            .help("把该服务器所有主题的消息标为已读")
+            .help(L("把该服务器所有主题的消息标为已读"))
 
             Toggle(isOn: $viewModel.onlyUnread) {
-                Text("仅看未读")
+                Text(L("仅看未读"))
                     .font(.callout)
             }
             .toggleStyle(.checkbox)
 
-            TextField("搜索标题或正文", text: $viewModel.searchText)
+            TextField(L("搜索标题或正文"), text: $viewModel.searchText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 180)
         }
@@ -126,9 +126,9 @@ struct ServerHistoryView: View {
             Image(systemName: "tray")
                 .font(.system(size: 32))
                 .foregroundStyle(.tertiary)
-            Text("该服务器暂无本地消息")
+            Text(L("该服务器暂无本地消息"))
                 .foregroundStyle(.secondary)
-            Text("订阅主题后新收到的通知会自动保存在这里；单个主题还可以在其详情页「加载全部历史」。")
+            Text(L("订阅主题后新收到的通知会自动保存在这里；单个主题还可以在其详情页「加载全部历史」。"))
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -155,9 +155,9 @@ struct ServerHistoryView: View {
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
-                .help("关闭提示")
+                .help(L("关闭提示"))
             } else if !viewModel.hasMoreMessages && !viewModel.messages.isEmpty {
-                Text("已加载全部本地消息")
+                Text(L("已加载全部本地消息"))
                     .font(.footnote)
                     .foregroundStyle(.tertiary)
             }

@@ -23,7 +23,7 @@ struct TopicRowView: View {
         } label: {
             HStack(spacing: 6) {
                 iconPreview
-                let label = topic.label.isEmpty ? "新主题" : topic.label
+                let label = topic.label.isEmpty ? L("新主题") : topic.label
                 Text(label)
                     .foregroundStyle(topic.label.isEmpty ? .secondary : .primary)
                 if label != topic.name && !topic.name.isEmpty {
@@ -60,19 +60,19 @@ struct TopicRowView: View {
     private var badges: some View {
         HStack(spacing: 4) {
             if topic.silent == true {
-                badge("speaker.slash.fill", "静默")
+                badge("speaker.slash.fill", L("静默"))
             }
             if let script = topic.autoRunScript, !script.isEmpty {
-                badge("terminal", "自动运行脚本")
+                badge("terminal", L("自动运行脚本"))
             }
             if let count = topic.actions?.count, count > 0 {
-                badge("button.programmable", "\(count) 个按钮动作")
+                badge("button.programmable", LF("%d 个按钮动作", count))
             }
             if topic.fetchMissed == true {
-                badge("arrow.triangle.2.circlepath", "重连时拉取错过的消息")
+                badge("arrow.triangle.2.circlepath", L("重连时拉取错过的消息"))
             }
             if let click = topic.clickUrl, case .custom = click {
-                badge("link", "自定义点击链接")
+                badge("link", L("自定义点击链接"))
             }
         }
     }
@@ -98,27 +98,27 @@ struct TopicSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            LabeledContent("名称") {
-                TextField("主题名称", text: $topic.name)
+            LabeledContent(L("名称")) {
+                TextField(L("主题名称"), text: $topic.name)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 260)
-                    .help("服务器上的主题 id，只能是英文字母、数字与 -_.")
+                    .help(L("服务器上的主题 id，只能是英文字母、数字与 -_."))
             }
 
-            LabeledContent("备注") {
-                TextField("显示名称（可用中文）", text: textBinding(\.displayName))
+            LabeledContent(L("备注")) {
+                TextField(L("显示名称（可用中文）"), text: textBinding(\.displayName))
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 260)
-                    .help("菜单栏、历史列表和通知标题显示这个名字；留空则显示主题 id")
+                    .help(L("菜单栏、历史列表和通知标题显示这个名字；留空则显示主题 id"))
             }
 
-            Toggle("重连时拉取错过的消息", isOn: Binding(
+            Toggle(L("重连时拉取错过的消息"), isOn: Binding(
                 get: { topic.fetchMissed ?? false },
                 set: { topic.fetchMissed = $0 ? true : nil }
             ))
             .foregroundStyle(.secondary)
 
-            Toggle("静默（不弹通知横幅）", isOn: Binding(
+            Toggle(L("静默（不弹通知横幅）"), isOn: Binding(
                 get: { topic.silent ?? false },
                 set: { topic.silent = $0 ? true : nil }
             ))
@@ -129,11 +129,11 @@ struct TopicSettingsView: View {
                     Button {
                         onSendTest()
                     } label: {
-                        Label("发送测试通知", systemImage: "paperplane")
+                        Label(L("发送测试通知"), systemImage: "paperplane")
                     }
                     .buttonStyle(.borderless)
                     .disabled(topic.name.trimmingCharacters(in: .whitespaces).isEmpty)
-                    .help("向该主题发布一条测试消息；已订阅的主题会随即弹出横幅（无需先保存）")
+                    .help(L("向该主题发布一条测试消息；已订阅的主题会随即弹出横幅（无需先保存）"))
 
                     testResultView
                     Spacer()
@@ -143,7 +143,7 @@ struct TopicSettingsView: View {
             Divider()
 
             // Icons
-            LabeledContent("SF Symbol 图标") {
+            LabeledContent(L("SF Symbol 图标")) {
                 HStack(spacing: 6) {
                     if let symbol = topic.iconSymbol, !symbol.isEmpty {
                         Image(systemName: symbol)
@@ -152,27 +152,27 @@ struct TopicSettingsView: View {
                     TextField("bell.badge", text: textBinding(\.iconSymbol))
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 200)
-                        .help("SF Symbol 名称，留空则不设置")
+                        .help(L("SF Symbol 名称，留空则不设置"))
                 }
             }
 
-            LabeledContent("图片图标") {
+            LabeledContent(L("图片图标")) {
                 pathRow(
-                    prompt: "图标文件",
+                    prompt: L("图标文件"),
                     text: textBinding(\.iconPath),
                     onPick: { topic.iconPath = pickFile() }
                 )
-                .help("本地图标图片文件路径")
+                .help(L("本地图标图片文件路径"))
             }
 
             Divider()
 
             // Click behaviour
-            LabeledContent("点击行为") {
+            LabeledContent(L("点击行为")) {
                 Picker("", selection: clickBinding) {
-                    Text("打开消息自带链接").tag(ClickMode.defaultOpen)
-                    Text("不打开任何内容").tag(ClickMode.disabled)
-                    Text("自定义 URL…").tag(ClickMode.custom)
+                    Text(L("打开消息自带链接")).tag(ClickMode.defaultOpen)
+                    Text(L("不打开任何内容")).tag(ClickMode.disabled)
+                    Text(L("自定义 URL…")).tag(ClickMode.custom)
                 }
                 .labelsHidden()
                 .fixedSize()
@@ -184,27 +184,27 @@ struct TopicSettingsView: View {
 
             Divider()
 
-            LabeledContent("自动运行脚本") {
+            LabeledContent(L("自动运行脚本")) {
                 VStack(alignment: .leading, spacing: 4) {
                     pathRow(
-                        prompt: "脚本文件",
+                        prompt: L("脚本文件"),
                         text: textBinding(\.autoRunScript),
                         onPick: { topic.autoRunScript = pickFile() }
                     )
-                    TextField("参数（可选；空格分隔，含空格用引号）", text: autoRunScriptArgsBinding)
+                    TextField(L("参数（可选；空格分隔，含空格用引号）"), text: autoRunScriptArgsBinding)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 340)
                 }
-                .help("每条消息到达时执行的脚本；参数以 argv 直传，消息体附加为最后一个参数")
+                .help(L("每条消息到达时执行的脚本；参数以 argv 直传，消息体附加为最后一个参数"))
             }
 
             Divider()
 
             // Actions
             VStack(alignment: .leading, spacing: 6) {
-                Text("按钮动作")
+                Text(L("按钮动作"))
                     .font(.callout.weight(.medium))
-                Text("配置里定义的按钮会覆盖消息自带的动作。")
+                Text(L("配置里定义的按钮会覆盖消息自带的动作。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -229,14 +229,14 @@ struct TopicSettingsView: View {
                         NotificationAction(title: "", type: "view")
                     )
                 } label: {
-                    Label("添加按钮动作", systemImage: "plus")
+                    Label(L("添加按钮动作"), systemImage: "plus")
                 }
                 .buttonStyle(.borderless)
             }
 
             if let onDelete {
                 Divider()
-                Button("删除此主题", role: .destructive, action: onDelete)
+                Button(L("删除此主题"), role: .destructive, action: onDelete)
                     .buttonStyle(.borderless)
                     .font(.caption)
             }
@@ -251,11 +251,11 @@ struct TopicSettingsView: View {
         case .sending:
             ProgressView().controlSize(.small)
         case .success:
-            Label("已发布，等待横幅", systemImage: "checkmark.circle.fill")
+            Label(L("已发布，等待横幅"), systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
                 .font(.caption)
         case .failed(let reason):
-            Label("发送失败：\(reason)", systemImage: "xmark.circle.fill")
+            Label(LF("发送失败：%@", reason), systemImage: "xmark.circle.fill")
                 .foregroundStyle(.red)
                 .font(.caption)
                 .lineLimit(1)
@@ -326,7 +326,7 @@ struct TopicSettingsView: View {
         HStack(spacing: 6) {
             TextField(prompt, text: text)
                 .textFieldStyle(.roundedBorder)
-            Button("选择…", action: onPick)
+            Button(L("选择…"), action: onPick)
                 .fixedSize()
         }
         .frame(width: 340)
@@ -367,21 +367,23 @@ private struct ActionEditorRow: View {
     @Binding var action: NotificationAction
     var onDelete: () -> Void
 
-    private static let types: [(value: String, label: String)] = [
-        ("view", "打开链接"),
-        ("script", "运行脚本"),
-        ("applescript", "AppleScript"),
-        ("shortcut", "快捷指令")
-    ]
+    private var types: [(value: String, label: String)] {
+        [
+            ("view", L("打开链接")),
+            ("script", L("运行脚本")),
+            ("applescript", "AppleScript"),
+            ("shortcut", L("快捷指令"))
+        ]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                TextField("按钮名称", text: $action.title)
+                TextField(L("按钮名称"), text: $action.title)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 140)
                 Picker("", selection: $action.type) {
-                    ForEach(Self.types, id: \.value) { type in
+                    ForEach(types, id: \.value) { type in
                         Text(type.label).tag(type.value)
                     }
                 }
@@ -393,7 +395,7 @@ private struct ActionEditorRow: View {
                         .foregroundStyle(.red)
                 }
                 .buttonStyle(.borderless)
-                .help("删除此按钮")
+                .help(L("删除此按钮"))
             }
 
             switch action.type {
@@ -402,21 +404,21 @@ private struct ActionEditorRow: View {
                     .textFieldStyle(.roundedBorder)
             case "script":
                 VStack(alignment: .leading, spacing: 4) {
-                    pathField("脚本文件", key: \.path)
-                    TextField("参数（可选；空格分隔，含空格用引号）", text: actionArgsBinding)
+                    pathField(L("脚本文件"), key: \.path)
+                    TextField(L("参数（可选；空格分隔，含空格用引号）"), text: actionArgsBinding)
                         .textFieldStyle(.roundedBorder)
                 }
             case "applescript":
                 // `path` runs a .scpt file; `script` is inline source.
                 VStack(alignment: .leading, spacing: 4) {
-                    pathField("脚本文件（可选）", key: \.path)
-                    TextField("或直接输入 AppleScript 源码", text: field(\.script), axis: .vertical)
+                    pathField(L("脚本文件（可选）"), key: \.path)
+                    TextField(L("或直接输入 AppleScript 源码"), text: field(\.script), axis: .vertical)
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(2...5)
                         .font(.system(.caption, design: .monospaced))
                 }
             case "shortcut":
-                TextField("macOS 快捷指令名称", text: field(\.name))
+                TextField(L("macOS 快捷指令名称"), text: field(\.name))
                     .textFieldStyle(.roundedBorder)
             default:
                 EmptyView()
@@ -452,7 +454,7 @@ private struct ActionEditorRow: View {
         HStack(spacing: 6) {
             TextField(prompt, text: field(key))
                 .textFieldStyle(.roundedBorder)
-            Button("选择…") {
+            Button(L("选择…")) {
                 let panel = NSOpenPanel()
                 panel.canChooseFiles = true
                 panel.canChooseDirectories = false

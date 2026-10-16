@@ -232,12 +232,12 @@ public final class NotificationManager: NSObject {
         }
 
         let content = UNMutableNotificationContent()
-        content.title = "\(count) 条新消息"
+        content.title = LF("%d 条新消息", count)
         let shownTopics = topics.prefix(3).joined(separator: "、")
         if topics.count > 3 {
-            content.body = "消息过于集中，已合并显示：\(shownTopics) 等 \(topics.count) 个主题"
+            content.body = LF("消息过于集中，已合并显示：%1$@ 等 %2$d 个主题", shownTopics, topics.count)
         } else {
-            content.body = "消息过于集中，已合并显示：\(shownTopics)"
+            content.body = LF("消息过于集中，已合并显示：%@", shownTopics)
         }
         content.interruptionLevel = .active
         if firstOfBurst {
@@ -265,12 +265,12 @@ public final class NotificationManager: NSObject {
         guard count > 0, Self.canManageBanners else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "补齐 \(count) 条消息"
+        content.title = LF("补齐 %d 条消息", count)
         let shownTopics = topics.prefix(3).joined(separator: "、")
         if topics.count > 3 {
-            content.body = "已收录历史：\(shownTopics) 等 \(topics.count) 个主题"
+            content.body = LF("已收录历史：%1$@ 等 %2$d 个主题", shownTopics, topics.count)
         } else {
-            content.body = "已收录历史：\(shownTopics)"
+            content.body = LF("已收录历史：%@", shownTopics)
         }
         content.interruptionLevel = .active
         content.sound = UNNotificationSound(named: UNNotificationSoundName("Glass.aiff"))
@@ -661,8 +661,8 @@ public final class NotificationManager: NSObject {
 
     public func showTestNotification(topic: String) {
         let content = UNMutableNotificationContent()
-        content.title = "测试通知"
-        content.body = "主题 \(topic) 的测试通知"
+        content.title = L("测试通知")
+        content.body = LF("主题 %@ 的测试通知", topic)
         content.sound = .default
 
         // The app icon on the left side of the notification is automatically

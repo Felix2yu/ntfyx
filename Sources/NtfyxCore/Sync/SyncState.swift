@@ -8,16 +8,16 @@ public struct SyncState: Codable, Equatable, Sendable {
     public var lastSyncedAt: Date?
 }
 
-/// Sync timestamps are pinned to zh_CN so they read 年月日 时分 instead of turning into
-/// "Oct 4, 2026" on a Mac whose system locale is English, unlike the rest of the copy.
+/// Sync timestamps follow the interface language: the templates are translation keys and the
+/// formatter's locale comes from the same language, so 年月日 and "Oct 4" never mix.
 public enum SyncTimeFormat {
-    private static let formatter: DateFormatter = make("yyyy年M月d日 HH:mm")
-    private static let timeFormatter: DateFormatter = make("HH:mm")
-    private static let monthDayFormatter: DateFormatter = make("M月d日 HH:mm")
+    private static var formatter: DateFormatter { make(L10n.text("yyyy年M月d日 HH:mm")) }
+    private static var timeFormatter: DateFormatter { make("HH:mm") }
+    private static var monthDayFormatter: DateFormatter { make(L10n.text("M月d日 HH:mm")) }
 
     private static func make(_ format: String) -> DateFormatter {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = Locale(identifier: L10n.language.localeIdentifier)
         formatter.dateFormat = format
         return formatter
     }

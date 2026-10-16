@@ -79,7 +79,7 @@ enum NtfyClientError: Error, LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .invalidURL(let url):
-            return "服务器地址无效：\(url)"
+            return L10n.format("服务器地址无效：%@", url)
         }
     }
 }

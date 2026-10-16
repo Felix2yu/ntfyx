@@ -10,8 +10,16 @@ struct TokenSheetView: View {
     @State private var storageChoice: TokenStorage = .keychain
 
     enum TokenStorage: String, CaseIterable {
-        case keychain = "钥匙串（推荐）"
-        case configFile = "配置文件"
+        case keychain
+        case configFile
+
+        @MainActor
+        var label: String {
+            switch self {
+            case .keychain: return L("钥匙串（推荐）")
+            case .configFile: return L("配置文件")
+            }
+        }
     }
 
     var body: some View {
@@ -21,7 +29,7 @@ struct TokenSheetView: View {
                     if !server.token.isEmpty {
                         HStack {
                             Label(
-                                server.storeInKeychain ? "当前存于钥匙串" : "当前存于配置文件",
+                                server.storeInKeychain ? L("当前存于钥匙串") : L("当前存于配置文件"),
                                 systemImage: server.storeInKeychain ? "key.fill" : "doc.text"
                             )
                             Spacer()
@@ -34,25 +42,25 @@ struct TokenSheetView: View {
                                     .foregroundStyle(.red)
                             }
                             .buttonStyle(.borderless)
-                            .help("删除令牌")
+                            .help(L("删除令牌"))
                         }
                     }
                 } header: {
-                    Text("当前状态")
+                    Text(L("当前状态"))
                 }
 
                 Section {
-                    SecureField("输入令牌", text: $tokenText)
+                    SecureField(L("输入令牌"), text: $tokenText)
                         .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("令牌")
+                        .accessibilityLabel(L("令牌"))
 
-                    Picker("存储位置", selection: $storageChoice) {
+                    Picker(L("存储位置"), selection: $storageChoice) {
                         ForEach(TokenStorage.allCases, id: \.self) { storage in
-                            Text(storage.rawValue).tag(storage)
+                            Text(storage.label).tag(storage)
                         }
                     }
                 } header: {
-                    Text(server.token.isEmpty ? "添加令牌" : "替换令牌")
+                    Text(server.token.isEmpty ? L("添加令牌") : L("替换令牌"))
                 }
             }
             .formStyle(.grouped)
@@ -60,12 +68,12 @@ struct TokenSheetView: View {
             Divider()
             HStack {
                 Spacer()
-                Button("取消") {
+                Button(L("取消")) {
                     dismiss()
                 }
                 .keyboardShortcut(.escape, modifiers: [])
 
-                Button("保存令牌") {
+                Button(L("保存令牌")) {
                     server.token = tokenText
                     server.storeInKeychain = (storageChoice == .keychain)
                     dismiss()
@@ -76,7 +84,9 @@ struct TokenSheetView: View {
             }
             .padding(12)
         }
-        .frame(width: 420, height: 280)
+        // 460, not 420: "Currently stored in the configuration file" + the trash button need
+        // the extra room the Chinese label never used.
+        .frame(width: 460, height: 280)
         .onAppear {
             storageChoice = server.storeInKeychain ? .keychain : .configFile
         }

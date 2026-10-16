@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "ntfyx",
+    defaultLocalization: "zh-Hans",
     platforms: [
         .macOS(.v26)
     ],
@@ -31,7 +32,8 @@ let package = Package(
                 "Yams",
                 .product(name: "GRDB", package: "GRDB.swift")
             ],
-            path: "Sources/NtfyxCore"
+            path: "Sources/NtfyxCore",
+            resources: [.process("Resources")]
         ),
         .executableTarget(
             name: "ntfyx",

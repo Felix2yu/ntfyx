@@ -20,7 +20,7 @@ enum SettingsCloseGuard {
     }
 
     private static var settingsWindow: NSWindow? {
-        NSApp.windows.first { $0.title == "ntfyx 设置" }
+        NSApp.windows.first { $0.title == L("ntfyx 设置") }
     }
 
     private static func attachIfNeeded(window: NSWindow, viewModel: SettingsViewModel) {
@@ -72,12 +72,12 @@ final class SettingsCloseDelegateProxy: NSObject, NSWindowDelegate {
         guard viewModel.hasUnsavedChanges else { return originalDecision() }
 
         let alert = NSAlert()
-        alert.messageText = "有未保存的更改"
-        alert.informativeText = "关闭窗口将丢失未保存的配置更改。"
+        alert.messageText = L("有未保存的更改")
+        alert.informativeText = L("关闭窗口将丢失未保存的配置更改。")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "保存并关闭")
-        alert.addButton(withTitle: "不保存关闭")
-        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: L("保存并关闭"))
+        alert.addButton(withTitle: L("不保存关闭"))
+        alert.addButton(withTitle: L("取消"))
         NSApp.activate()
 
         switch alert.runModal() {
@@ -85,10 +85,10 @@ final class SettingsCloseDelegateProxy: NSObject, NSWindowDelegate {
             viewModel.save()
             if let error = viewModel.saveError {
                 let errAlert = NSAlert()
-                errAlert.messageText = "保存失败"
+                errAlert.messageText = L("保存失败")
                 errAlert.informativeText = error
                 errAlert.alertStyle = .critical
-                errAlert.addButton(withTitle: "好")
+                errAlert.addButton(withTitle: L("好"))
                 errAlert.runModal()
                 return false
             }

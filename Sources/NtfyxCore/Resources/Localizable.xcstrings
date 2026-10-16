@@ -1,0 +1,3276 @@
+{
+  "sourceLanguage": "zh-Hans",
+  "strings": {
+    "%1$@\n主题：%2$@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@\nTopics: %2$@"
+          }
+        }
+      }
+    },
+    "%1$d 台服务器 · %2$d 个主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$d servers · %2$d topics"
+          }
+        }
+      }
+    },
+    "%@ 不是文件夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is not a folder"
+          }
+        }
+      }
+    },
+    "%@ 已被占用为文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is already occupied by a file"
+          }
+        }
+      }
+    },
+    "%d 个主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d topics"
+          }
+        }
+      }
+    },
+    "%d 个按钮动作": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d button actions"
+          }
+        }
+      }
+    },
+    "%d 条新消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d new messages"
+          }
+        }
+      }
+    },
+    "%d 条未读": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d unread"
+          }
+        }
+      }
+    },
+    "%d 条结果": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d results"
+          }
+        }
+      }
+    },
+    "HTTP %1$d%2$@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTP %1$d%2$@"
+          }
+        }
+      }
+    },
+    "HTTP %d": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTP %d"
+          }
+        }
+      }
+    },
+    "M月d日 HH:mm": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MMM d HH:mm"
+          }
+        }
+      }
+    },
+    "SF Symbol 名称，留空则不设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SF Symbol name. Leave it empty to unset."
+          }
+        }
+      }
+    },
+    "SF Symbol 图标": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SF Symbol icon"
+          }
+        }
+      }
+    },
+    "URL 必须使用 http 或 https 协议：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The URL must use the http or https scheme: %@"
+          }
+        }
+      }
+    },
+    "URL 必须包含有效主机名：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The URL must include a valid host name: %@"
+          }
+        }
+      }
+    },
+    "URL 格式无效：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid URL: %@"
+          }
+        }
+      }
+    },
+    "YAML 无效：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid YAML: %@"
+          }
+        }
+      }
+    },
+    "iCloud Drive 未开启。请在 系统设置 → Apple 账户 → iCloud 中启用，或在设置里改用一个同步文件夹。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud Drive is not turned on. Enable it in System Settings → Apple Account → iCloud, or choose a different sync folder in Settings."
+          }
+        }
+      }
+    },
+    "iCloud 同步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud Sync"
+          }
+        }
+      }
+    },
+    "iCloud 同步：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud Sync: %@"
+          }
+        }
+      }
+    },
+    "iCloud 同步：已关闭": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud Sync: Off"
+          }
+        }
+      }
+    },
+    "iCloud 同步：正在同步…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud Sync: Syncing…"
+          }
+        }
+      }
+    },
+    "iCloud 同步：等待首次同步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud Sync: Waiting for first sync"
+          }
+        }
+      }
+    },
+    "macOS 快捷指令名称": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS Shortcut name"
+          }
+        }
+      }
+    },
+    "ntfy 服务器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ntfy servers"
+          }
+        }
+      }
+    },
+    "ntfy.sh 的原生 macOS 客户端": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A native macOS client for ntfy.sh"
+          }
+        }
+      }
+    },
+    "ntfyx - 通知权限设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ntfyx - Notification Permission"
+          }
+        }
+      }
+    },
+    "ntfyx 设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ntfyx Settings"
+          }
+        }
+      }
+    },
+    "ntfyx 需要权限才能发送通知。\n\n点击下方按钮以请求权限。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ntfyx needs permission to send notifications.\n\nClick the button below to request it."
+          }
+        }
+      }
+    },
+    "ntfyx 项目主页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ntfyx Project Homepage"
+          }
+        }
+      }
+    },
+    "yyyy年M月d日": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MMM d, yyyy"
+          }
+        }
+      }
+    },
+    "yyyy年M月d日 HH:mm": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MMM d, yyyy HH:mm"
+          }
+        }
+      }
+    },
+    "⚠️ iCloud 同步失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⚠️ iCloud sync failed"
+          }
+        }
+      }
+    },
+    "⚠️ 配置警告": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⚠️ Configuration warning"
+          }
+        }
+      }
+    },
+    "⚠️ 配置错误": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⚠️ Configuration error"
+          }
+        }
+      }
+    },
+    "「从服务器删除」会同步清掉其他设备上的这些消息；仅清空本地只影响这台 Mac，服务器缓存不变。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"Delete from server\" also removes these messages on your other devices. Clearing locally affects only this Mac; the server cache stays as it is."
+          }
+        }
+      }
+    },
+    "上次同步：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last sync: %@"
+          }
+        }
+      }
+    },
+    "下载失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download failed"
+          }
+        }
+      }
+    },
+    "下载并在默认应用中预览附件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download the attachment and preview it in your default app."
+          }
+        }
+      }
+    },
+    "不保存关闭": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close without saving"
+          }
+        }
+      }
+    },
+    "不打开任何内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Don't open anything"
+          }
+        }
+      }
+    },
+    "不限制": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No restrictions"
+          }
+        }
+      }
+    },
+    "与 iCloud Drive 中的配置立即合并；平时由配置改动与云端变更事件触发": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merges with the configuration in iCloud Drive right now; normally triggered by configuration changes and cloud change events"
+          }
+        }
+      }
+    },
+    "主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Topic"
+          }
+        }
+      }
+    },
+    "主题 %1$@ 的备注最长 64 个字符": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The remark for topic %1$@ can be at most 64 characters."
+          }
+        }
+      }
+    },
+    "主题 %@ 的测试通知": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test notification for topic %@"
+          }
+        }
+      }
+    },
+    "主题 '%1$@'（服务器：%2$@）中存在未知配置项 '%3$@'": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown configuration key '%3$@' in topic '%1$@' (server: %2$@)"
+          }
+        }
+      }
+    },
+    "主题 id：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Topic ID: %@"
+          }
+        }
+      }
+    },
+    "主题名称": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Topic name"
+          }
+        }
+      }
+    },
+    "主题名称不能为空": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The topic name cannot be empty."
+          }
+        }
+      }
+    },
+    "云端配置尚未下载到本机，稍后会自动重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The cloud configuration has not been downloaded to this Mac yet. It will retry automatically later."
+          }
+        }
+      }
+    },
+    "云端配置无法解析：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot parse the cloud configuration: %@"
+          }
+        }
+      }
+    },
+    "云端配置版本 %d 比本机 ntfyx 支持的版本更新，已跳过同步以免写坏它。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The cloud configuration is version %d, newer than the version this Mac's ntfyx supports. Sync was skipped to avoid corrupting it."
+          }
+        }
+      }
+    },
+    "仅清空本地消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear local messages only"
+          }
+        }
+      }
+    },
+    "仅看未读": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unread only"
+          }
+        }
+      }
+    },
+    "从服务器删除": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete from server"
+          }
+        }
+      }
+    },
+    "从服务器拉取该主题全部缓存消息（可能较慢，注意限速）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pulls every cached message for this topic from the server. It can be slow, and rate limits apply."
+          }
+        }
+      }
+    },
+    "从服务器退役…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retire from server…"
+          }
+        }
+      }
+    },
+    "令牌": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token"
+          }
+        }
+      }
+    },
+    "令牌存储于配置文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token stored in the configuration file"
+          }
+        }
+      }
+    },
+    "令牌存储于钥匙串": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token stored in Keychain"
+          }
+        }
+      }
+    },
+    "令牌被服务器拒绝": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token rejected by the server"
+          }
+        }
+      }
+    },
+    "令牌：未配置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token: not configured"
+          }
+        }
+      }
+    },
+    "作者：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Author: %@"
+          }
+        }
+      }
+    },
+    "保存": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save"
+          }
+        }
+      }
+    },
+    "保存令牌": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save token"
+          }
+        }
+      }
+    },
+    "保存失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save failed"
+          }
+        }
+      }
+    },
+    "保存失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save failed: %@"
+          }
+        }
+      }
+    },
+    "保存并关闭": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save and close"
+          }
+        }
+      }
+    },
+    "信任域名": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trusted domains"
+          }
+        }
+      }
+    },
+    "允许跳转方案": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allowed jump schemes"
+          }
+        }
+      }
+    },
+    "全局搜索": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Global search"
+          }
+        }
+      }
+    },
+    "全部主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All topics"
+          }
+        }
+      }
+    },
+    "全部已读": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mark all read"
+          }
+        }
+      }
+    },
+    "全部标记已读（%d 条未读）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mark everything read (%d unread)"
+          }
+        }
+      }
+    },
+    "全部禁止": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deny everything"
+          }
+        }
+      }
+    },
+    "关于 ntfyx": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About ntfyx"
+          }
+        }
+      }
+    },
+    "关闭提示": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss"
+          }
+        }
+      }
+    },
+    "关闭窗口将丢失未保存的配置更改。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closing the window will discard your unsaved configuration changes."
+          }
+        }
+      }
+    },
+    "写入云端配置失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to write the cloud configuration: %@"
+          }
+        }
+      }
+    },
+    "写入本地配置失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to write the local configuration: %@"
+          }
+        }
+      }
+    },
+    "刚刚": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Just now"
+          }
+        }
+      }
+    },
+    "删除令牌": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete token"
+          }
+        }
+      }
+    },
+    "删除此主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete this topic"
+          }
+        }
+      }
+    },
+    "删除此按钮": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete this button"
+          }
+        }
+      }
+    },
+    "删除此服务器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete this server"
+          }
+        }
+      }
+    },
+    "删除这条消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete this message"
+          }
+        }
+      }
+    },
+    "前 %d 条结果": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First %d results"
+          }
+        }
+      }
+    },
+    "加载全部历史": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load full history"
+          }
+        }
+      }
+    },
+    "加载配置失败。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to load the configuration."
+          }
+        }
+      }
+    },
+    "动作 '%1$@'（主题：%2$@）中存在未知配置项 '%3$@'": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown configuration key '%3$@' in action '%1$@' (topic: %2$@)"
+          }
+        }
+      }
+    },
+    "参数（可选；空格分隔，含空格用引号）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arguments (optional; space-separated, quote anything containing spaces)"
+          }
+        }
+      }
+    },
+    "发送 %@ 请求": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send a %@ request"
+          }
+        }
+      }
+    },
+    "发送 ntfyx 测试通知": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send ntfyx test notification"
+          }
+        }
+      }
+    },
+    "发送失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send failed: %@"
+          }
+        }
+      }
+    },
+    "发送测试通知": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send test notification"
+          }
+        }
+      }
+    },
+    "取消": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
+    "取消订阅（本机会一并清掉该主题的历史）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unsubscribe. This Mac also deletes the topic's history."
+          }
+        }
+      }
+    },
+    "只切换 ntfyx 的界面文字，保存在本机、不参与 iCloud 同步；服务器发来的消息保持原文": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only ntfyx's own interface text changes. The choice is saved on this Mac and never synced; messages from your servers keep their original wording."
+          }
+        }
+      }
+    },
+    "同步失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync failed: %@"
+          }
+        }
+      }
+    },
+    "同步完成，共 %d 条": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync complete: %d messages"
+          }
+        }
+      }
+    },
+    "同步文件不包含服务器令牌：每台 Mac 的令牌只存在各自的钥匙串里，新加入同步的 Mac 需自行粘贴一次。脚本、图标路径、通知动作和本地服务端口也只留在本机，不参与同步。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The sync file never contains server tokens: each Mac keeps its own tokens in its local Keychain, so a Mac joining the sync has to paste them once. Scripts, icon paths, notification actions and the local server port also stay on this Mac and are not synced."
+          }
+        }
+      }
+    },
+    "同步文件夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync folder"
+          }
+        }
+      }
+    },
+    "名称": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name"
+          }
+        }
+      }
+    },
+    "向该主题发布一条测试消息；已订阅的主题会随即弹出横幅（无需先保存）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publishes one test message to this topic. A subscribed topic shows a banner right away (no need to save first)."
+          }
+        }
+      }
+    },
+    "图标文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Icon file"
+          }
+        }
+      }
+    },
+    "图片": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image"
+          }
+        }
+      }
+    },
+    "图片图标": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image icon"
+          }
+        }
+      }
+    },
+    "在 Finder 中显示配置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Configuration in Finder"
+          }
+        }
+      }
+    },
+    "在各台 Mac 之间同步服务器与主题配置。消息不经 iCloud，仍直接从 ntfy 服务器获取。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syncs server and topic configuration across your Macs. Messages don't travel through iCloud; they are still fetched straight from the ntfy server."
+          }
+        }
+      }
+    },
+    "在所有主题的标题、正文与名称中搜索": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search titles, bodies, and names across all topics."
+          }
+        }
+      }
+    },
+    "在编辑器中打开配置文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the configuration file in your editor."
+          }
+        }
+      }
+    },
+    "地址无效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid address"
+          }
+        }
+      }
+    },
+    "地址无效（需 http/https）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid address (http/https required)"
+          }
+        }
+      }
+    },
+    "基于 MIT 许可证开源": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open-sourced under the MIT License"
+          }
+        }
+      }
+    },
+    "备注": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remark"
+          }
+        }
+      }
+    },
+    "复制到剪贴板": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy to clipboard"
+          }
+        }
+      }
+    },
+    "复制消息内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy message"
+          }
+        }
+      }
+    },
+    "好": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        }
+      }
+    },
+    "存储位置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Storage location"
+          }
+        }
+      }
+    },
+    "完成": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        }
+      }
+    },
+    "将该主题全部消息标为已读": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marks every message in this topic as read."
+          }
+        }
+      }
+    },
+    "尚未生成日志文件。日志将写入 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No log file has been generated yet. Logs are written to %@"
+          }
+        }
+      }
+    },
+    "尚未配置服务器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No servers configured yet"
+          }
+        }
+      }
+    },
+    "展开全文": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand"
+          }
+        }
+      }
+    },
+    "已加载全部本地消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All local messages loaded"
+          }
+        }
+      }
+    },
+    "已发布，等待横幅": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Published, waiting for the banner"
+          }
+        }
+      }
+    },
+    "已发送主题「%@」的测试通知。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent the test notification for topic \"%@\"."
+          }
+        }
+      }
+    },
+    "已恢复 ntfyx 通知横幅。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resumed ntfyx notification banners."
+          }
+        }
+      }
+    },
+    "已拷贝": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copied"
+          }
+        }
+      }
+    },
+    "已收录历史：%1$@ 等 %2$d 个主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved to history: %1$@ and %2$d other topics"
+          }
+        }
+      }
+    },
+    "已收录历史：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved to history: %@"
+          }
+        }
+      }
+    },
+    "已断开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disconnected"
+          }
+        }
+      }
+    },
+    "已暂停 ntfyx 通知横幅。订阅与历史记录不受影响。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused ntfyx notification banners. Subscriptions and history are unaffected."
+          }
+        }
+      }
+    },
+    "已触发一次 ntfyx 配置同步。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Triggered an ntfyx configuration sync."
+          }
+        }
+      }
+    },
+    "已订阅": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subscribed"
+          }
+        }
+      }
+    },
+    "已连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected"
+          }
+        }
+      }
+    },
+    "已连接 %1$d/%2$d 台服务器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected to %1$d/%2$d servers"
+          }
+        }
+      }
+    },
+    "开机时启动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Launch at login"
+          }
+        }
+      }
+    },
+    "当前存于配置文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Currently stored in the configuration file"
+          }
+        }
+      }
+    },
+    "当前存于钥匙串": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Currently stored in Keychain"
+          }
+        }
+      }
+    },
+    "当前状态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current state"
+          }
+        }
+      }
+    },
+    "快捷指令": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shortcut"
+          }
+        }
+      }
+    },
+    "恢复 ntfyx 的通知横幅展示。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resumes ntfyx notification banners."
+          }
+        }
+      }
+    },
+    "恢复 ntfyx 通知": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume ntfyx notifications"
+          }
+        }
+      }
+    },
+    "意外的发送结果": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unexpected send result"
+          }
+        }
+      }
+    },
+    "意外的探测结果": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unexpected probe result"
+          }
+        }
+      }
+    },
+    "或直接输入 AppleScript 源码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Or type the AppleScript source directly"
+          }
+        }
+      }
+    },
+    "打开 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open %@"
+          }
+        }
+      }
+    },
+    "打开主题「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open topic \"%@\""
+          }
+        }
+      }
+    },
+    "打开消息自带链接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the message's own link"
+          }
+        }
+      }
+    },
+    "打开系统设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open System Settings"
+          }
+        }
+      }
+    },
+    "打开链接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open link"
+          }
+        }
+      }
+    },
+    "把该服务器所有主题的消息标为已读": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marks every message across this server's topics as read."
+          }
+        }
+      }
+    },
+    "拷贝": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy"
+          }
+        }
+      }
+    },
+    "拷贝到剪贴板": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy to the clipboard."
+          }
+        }
+      }
+    },
+    "按当前填写的地址与令牌探测服务器（无需先保存）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Probes the server with the address and token you just typed (no need to save first)."
+          }
+        }
+      }
+    },
+    "按钮动作": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Button actions"
+          }
+        }
+      }
+    },
+    "按钮名称": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Button name"
+          }
+        }
+      }
+    },
+    "搜索中…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Searching…"
+          }
+        }
+      }
+    },
+    "搜索标题或正文": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search titles or bodies"
+          }
+        }
+      }
+    },
+    "收起": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse"
+          }
+        }
+      }
+    },
+    "改用 iCloud Drive": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use iCloud Drive instead"
+          }
+        }
+      }
+    },
+    "新主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New topic"
+          }
+        }
+      }
+    },
+    "新收到的通知会自动保存在这里；也可点击「加载全部历史」从服务器拉取。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New notifications are saved here automatically. You can also click Load full history to pull them from the server."
+          }
+        }
+      }
+    },
+    "新服务器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New server"
+          }
+        }
+      }
+    },
+    "无权限（HTTP %1$d）：该服务器需要写入权限才能管理主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not allowed (HTTP %1$d): this server needs write access to manage topics."
+          }
+        }
+      }
+    },
+    "无法使用同步文件夹：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot use the sync folder: %@"
+          }
+        }
+      }
+    },
+    "无法写入本地 API 令牌文件：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to write the local API token file: %@"
+          }
+        }
+      }
+    },
+    "无法生成本地 API 令牌（SecRandomCopyBytes 返回 %d）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to generate the local API token (SecRandomCopyBytes returned %d)"
+          }
+        }
+      }
+    },
+    "无法访问同步文件夹：%@。若是 iCloud Drive，请在 系统设置 → 隐私与安全性 → 文件与文件夹 中允许 ntfyx 访问。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot access the sync folder: %@. If it is in iCloud Drive, allow ntfyx access in System Settings → Privacy & Security → Files & Folders."
+          }
+        }
+      }
+    },
+    "无法读取云端配置：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot read the cloud configuration: %@"
+          }
+        }
+      }
+    },
+    "无法连接服务器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to reach the server"
+          }
+        }
+      }
+    },
+    "显示名称（可用中文）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Display name (Chinese is fine)"
+          }
+        }
+      }
+    },
+    "暂停 ntfyx 的通知横幅；订阅连接、历史记录与未读角标照常工作。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pauses ntfyx notification banners; subscriptions, history, and the unread badge keep working."
+          }
+        }
+      }
+    },
+    "暂停 ntfyx 通知": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause ntfyx notifications"
+          }
+        }
+      }
+    },
+    "暂停横幅通知；消息仍会写入历史并计入未读": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause banner notifications; messages are still written to history and counted as unread"
+          }
+        }
+      }
+    },
+    "暂停通知": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause notifications"
+          }
+        }
+      }
+    },
+    "暂无消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No messages"
+          }
+        }
+      }
+    },
+    "替换令牌": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Replace token"
+          }
+        }
+      }
+    },
+    "有未保存的更改": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There are unsaved changes."
+          }
+        }
+      }
+    },
+    "服务器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Servers"
+          }
+        }
+      }
+    },
+    "服务器 %@ 中存在重复的主题名称": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Duplicate topic names on server %@"
+          }
+        }
+      }
+    },
+    "服务器 %@ 未配置任何主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server %@ has no topics configured"
+          }
+        }
+      }
+    },
+    "服务器 '%1$@' 中存在未知配置项 '%2$@'": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown configuration key '%2$@' on server '%1$@'"
+          }
+        }
+      }
+    },
+    "服务器上不存在该主题（HTTP 404）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That topic does not exist on the server (HTTP 404)."
+          }
+        }
+      }
+    },
+    "服务器上的主题 id，只能是英文字母、数字与 -_.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The topic id on the server. Letters, digits and -_. only."
+          }
+        }
+      }
+    },
+    "服务器主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server topics"
+          }
+        }
+      }
+    },
+    "服务器会丢弃该主题的全部缓存消息与附件，其他设备也会随之清空；有新消息发布时主题会重新出现在列表里。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server discards every cached message and attachment for this topic, and your other devices clear them too. The topic reappears in the list as soon as a new message is published."
+          }
+        }
+      }
+    },
+    "服务器会丢弃该主题的全部缓存消息与附件，其他设备也会随之清空；服务器上的主题配置不会被改动。本机的历史与订阅保留。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server discards every cached message and attachment for this topic, and your other devices clear them too. The topic's server-side settings are left unchanged. This Mac keeps its history and subscription."
+          }
+        }
+      }
+    },
+    "服务器地址不能为空": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server address cannot be empty."
+          }
+        }
+      }
+    },
+    "服务器地址无效：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid server URL: %@"
+          }
+        }
+      }
+    },
+    "服务器已无缓存": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not cached on the server"
+          }
+        }
+      }
+    },
+    "服务器返回 %1$d": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server returned %1$d."
+          }
+        }
+      }
+    },
+    "服务器返回 %1$d（限速），%2$d 秒后可重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server returned %1$d (rate limited). You can retry in %2$d seconds."
+          }
+        }
+      }
+    },
+    "服务器返回 HTTP %d": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server returned HTTP %d."
+          }
+        }
+      }
+    },
+    "服务器返回了无法解析的主题列表": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server returned a topic list that could not be parsed."
+          }
+        }
+      }
+    },
+    "服务器返回了无法识别的响应": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server returned an unrecognized response."
+          }
+        }
+      }
+    },
+    "服务器限速，%d 秒后可重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rate limited by the server. You can retry in %d seconds."
+          }
+        }
+      }
+    },
+    "未找到日志": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No logs found"
+          }
+        }
+      }
+    },
+    "未找到配置文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration file not found"
+          }
+        }
+      }
+    },
+    "未找到配置文件，且创建初始配置失败。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No config file was found, and the starter config could not be created."
+          }
+        }
+      }
+    },
+    "未知配置项：\n%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown configuration keys:\n%@"
+          }
+        }
+      }
+    },
+    "未配置服务器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No servers configured"
+          }
+        }
+      }
+    },
+    "未配置服务器或主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No servers or topics configured"
+          }
+        }
+      }
+    },
+    "本地图标图片文件路径": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Path to a local icon image file."
+          }
+        }
+      }
+    },
+    "本地已全部标为已读；服务器同步在 %1$d/%2$d 处停止（离线或无写入权限）。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything is marked as read on this device; syncing to the server stopped at %1$d/%2$d (offline or no write access)."
+          }
+        }
+      }
+    },
+    "本地已全部标为已读；服务器已同步 %1$d 条，其余超出单次上限 %2$d 条未同步（限速保护）。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything is marked as read on this device; %1$d messages synced to the server and the rest were left alone because they exceed the %2$d per-request limit (rate-limit protection)."
+          }
+        }
+      }
+    },
+    "本地已全部清空；服务器删除在 %1$d/%2$d 处停止（离线或无写入权限）。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything was cleared on this device; deleting on the server stopped at %1$d/%2$d (offline or no write access)."
+          }
+        }
+      }
+    },
+    "本地已全部清空；服务器已删除 %1$d 条，其余超出单次上限 %2$d 条未删除（限速保护）。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything was cleared on this device; %1$d messages were deleted on the server and the rest were left alone because they exceed the %2$d per-request limit (rate-limit protection)."
+          }
+        }
+      }
+    },
+    "本地通知服务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local notification server"
+          }
+        }
+      }
+    },
+    "权限已授予，通知功能已开启。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permission granted. Notifications are now on."
+          }
+        }
+      }
+    },
+    "查看日志…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View Logs…"
+          }
+        }
+      }
+    },
+    "查看服务器上有缓存的主题，点订阅即可加入": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See the topics the server has cached. Select Subscribe to add one."
+          }
+        }
+      }
+    },
+    "标为已读": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mark as read"
+          }
+        }
+      }
+    },
+    "标为未读": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mark as unread"
+          }
+        }
+      }
+    },
+    "根级别存在未知配置项 '%@'": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown configuration key '%@' at the root level"
+          }
+        }
+      }
+    },
+    "正在从服务器同步历史…（已接收 %d 条）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syncing history from the server… (%d received)"
+          }
+        }
+      }
+    },
+    "正在同步…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syncing…"
+          }
+        }
+      }
+    },
+    "正在查询服务器主题…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fetching server topics…"
+          }
+        }
+      }
+    },
+    "正在检查通知权限…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking Notifications permission…"
+          }
+        }
+      }
+    },
+    "正在请求权限…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requesting permission…"
+          }
+        }
+      }
+    },
+    "每条消息到达时执行的脚本；参数以 argv 直传，消息体附加为最后一个参数": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A script to run when each message arrives. Arguments are passed straight through as argv, and the message body is appended as the last argument."
+          }
+        }
+      }
+    },
+    "没有匹配的消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching messages"
+          }
+        }
+      }
+    },
+    "没有未读消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No unread messages"
+          }
+        }
+      }
+    },
+    "没有查询到主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No topics found"
+          }
+        }
+      }
+    },
+    "测试连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test connection"
+          }
+        }
+      }
+    },
+    "测试通知": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test notification"
+          }
+        }
+      }
+    },
+    "测试通知中显示的 ntfy 主题名称": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The ntfy topic name shown in the test notification"
+          }
+        }
+      }
+    },
+    "浏览历史时，卡片有四分之一以上进入视口就标为已读，并像点击卡片那样同步到服务器；已读的条目仍留在列表里，不抽走、不跳位。窗口开着时刚到达的新消息不算，它仍然弹横幅并保持未读": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "While you browse the history, a card is marked read once roughly a quarter of it is in view, and the change reaches the server just as it would if you clicked the card. Read entries stay in the list: nothing is pulled away, nothing jumps. A message that arrives while the window is open does not count — it still raises a banner and stays unread."
+          }
+        }
+      }
+    },
+    "消息字号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message font size"
+          }
+        }
+      }
+    },
+    "消息过于集中，已合并显示：%1$@ 等 %2$d 个主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message storm merged into one banner: %1$@ and %2$d other topics"
+          }
+        }
+      }
+    },
+    "消息过于集中，已合并显示：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message storm merged into one banner: %@"
+          }
+        }
+      }
+    },
+    "添加主题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add topic"
+          }
+        }
+      }
+    },
+    "添加令牌": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add token"
+          }
+        }
+      }
+    },
+    "添加按钮动作": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add button action"
+          }
+        }
+      }
+    },
+    "添加服务器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add server"
+          }
+        }
+      }
+    },
+    "清空": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear"
+          }
+        }
+      }
+    },
+    "清空主题「%@」的全部消息？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete all messages for topic \"%@\"?"
+          }
+        }
+      }
+    },
+    "清空主题「%@」的服务器缓存？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear the server cache for topic \"%@\"?"
+          }
+        }
+      }
+    },
+    "清空本地并从服务器删除": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear locally and delete from server"
+          }
+        }
+      }
+    },
+    "清空该主题在服务器上的缓存，需对该主题有写入权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clears this topic's cache on the server. Requires write access to the topic."
+          }
+        }
+      }
+    },
+    "清空该主题的历史消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear this topic's message history."
+          }
+        }
+      }
+    },
+    "清除本地历史": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear local history"
+          }
+        }
+      }
+    },
+    "滚动即已读": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mark as read on scroll"
+          }
+        }
+      }
+    },
+    "点击行为": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click behavior"
+          }
+        }
+      }
+    },
+    "版本 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version %@"
+          }
+        }
+      }
+    },
+    "界面语言": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interface language"
+          }
+        }
+      }
+    },
+    "登录后自动在菜单栏运行 ntfyx": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run ntfyx in the menu bar after you log in"
+          }
+        }
+      }
+    },
+    "白名单：仅所列域名的链接可直接打开；*. 前缀匹配其子域；自定义列表留空等于全部禁止": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allowlist: only links from the listed domains open directly. A *. prefix matches its subdomains. An empty custom list denies everything."
+          }
+        }
+      }
+    },
+    "立即同步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync now"
+          }
+        }
+      }
+    },
+    "立即同步 ntfyx 配置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync ntfyx configuration now"
+          }
+        }
+      }
+    },
+    "立即同步配置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync configuration now"
+          }
+        }
+      }
+    },
+    "立即向通知中心投递一条本地测试横幅，用于验证通知权限与展示效果。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delivers a local test banner to Notification Center immediately, for checking Notifications permission and banner display."
+          }
+        }
+      }
+    },
+    "立即执行一次 iCloud 配置合并；不会等待同步结果，状态可在菜单中查看。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Runs an iCloud configuration merge immediately; does not wait for the result, and the status is visible in the menu."
+          }
+        }
+      }
+    },
+    "立即重新同步（限速到点后也会自动重试一次）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Re-sync now. Syncing also retries automatically once the rate limit lifts."
+          }
+        }
+      }
+    },
+    "端口": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port"
+          }
+        }
+      }
+    },
+    "端口号无效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid port number."
+          }
+        }
+      }
+    },
+    "端口范围须为 1024–65535；留空表示禁用本地通知服务。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The port must be between 1024 and 65535; leave it empty to disable the local notification server."
+          }
+        }
+      }
+    },
+    "等待首次同步…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for first sync…"
+          }
+        }
+      }
+    },
+    "管理…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage…"
+          }
+        }
+      }
+    },
+    "网络错误：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network error: %@"
+          }
+        }
+      }
+    },
+    "脚本文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Script file"
+          }
+        }
+      }
+    },
+    "脚本文件（可选）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Script file (optional)"
+          }
+        }
+      }
+    },
+    "自动运行脚本": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-run script"
+          }
+        }
+      }
+    },
+    "自定义 URL…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom URL…"
+          }
+        }
+      }
+    },
+    "自定义列表": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom list"
+          }
+        }
+      }
+    },
+    "自定义点击链接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom click link"
+          }
+        }
+      }
+    },
+    "致谢：%@（本项目原作者）、%@（ntfy 作者）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With thanks to %@ (this project's original author) and %@ (creator of ntfy)"
+          }
+        }
+      }
+    },
+    "菜单栏、历史列表和通知标题显示这个名字；留空则显示主题 id": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menu bar, history list and notification titles show this name. Leave it empty to show the topic id instead."
+          }
+        }
+      }
+    },
+    "补齐 %d 条消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d missed messages caught up"
+          }
+        }
+      }
+    },
+    "要发送哪个主题的测试通知？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Which topic should the test notification use?"
+          }
+        }
+      }
+    },
+    "订阅": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subscribe"
+          }
+        }
+      }
+    },
+    "订阅主题后新收到的通知会自动保存在这里；单个主题还可以在其详情页「加载全部历史」。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Once you subscribe to a topic, new notifications are saved here automatically. For a single topic you can also use Load full history on its detail page."
+          }
+        }
+      }
+    },
+    "设置…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings…"
+          }
+        }
+      }
+    },
+    "设置开机启动失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to change Launch at login: %@"
+          }
+        }
+      }
+    },
+    "该服务器暂无本地消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No local messages for this server"
+          }
+        }
+      }
+    },
+    "请求权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request Permission"
+          }
+        }
+      }
+    },
+    "请输入主题名称。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a topic name."
+          }
+        }
+      }
+    },
+    "跟随系统": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Match the system language"
+          }
+        }
+      }
+    },
+    "输入令牌": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter token"
+          }
+        }
+      }
+    },
+    "运行脚本": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run script"
+          }
+        }
+      }
+    },
+    "连接中…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting…"
+          }
+        }
+      }
+    },
+    "连接失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection failed: %@"
+          }
+        }
+      }
+    },
+    "连接正常": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection OK"
+          }
+        }
+      }
+    },
+    "连接正常 · v%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection OK · v%@"
+          }
+        }
+      }
+    },
+    "退出 ntfyx": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit ntfyx"
+          }
+        }
+      }
+    },
+    "退出搜索": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exit search"
+          }
+        }
+      }
+    },
+    "退役 %1$@ 失败：%2$@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not retire %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "退役主题「%@」？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retire topic \"%@\"?"
+          }
+        }
+      }
+    },
+    "退役并从服务器删除": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retire and delete from server"
+          }
+        }
+      }
+    },
+    "选择": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose"
+          }
+        }
+      }
+    },
+    "选择…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose…"
+          }
+        }
+      }
+    },
+    "选择一个主题查看历史消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select a topic to view its history."
+          }
+        }
+      }
+    },
+    "选择存放 ntfyx 同步配置文件的文件夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose the folder that holds the ntfyx sync configuration file."
+          }
+        }
+      }
+    },
+    "通用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "General"
+          }
+        }
+      }
+    },
+    "通知历史": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notification History"
+          }
+        }
+      }
+    },
+    "通知历史…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notification History…"
+          }
+        }
+      }
+    },
+    "通知历史中消息正文的字体大小，Markdown 标题随字号等比缩放": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Font size for message bodies in the history window; Markdown headings scale with it."
+          }
+        }
+      }
+    },
+    "通知已暂停": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications paused"
+          }
+        }
+      }
+    },
+    "通知权限未授予。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications permission not granted."
+          }
+        }
+      }
+    },
+    "通知权限未授予。\n\n请前往 系统设置 → 通知 → ntfyx 手动开启。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications permission was not granted.\n\nTurn it on manually in System Settings → Notifications → ntfyx."
+          }
+        }
+      }
+    },
+    "通过 iCloud 同步配置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync configuration through iCloud"
+          }
+        }
+      }
+    },
+    "配置中没有服务器 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server %@ is not in the configuration"
+          }
+        }
+      }
+    },
+    "配置同步只作用于默认配置文件 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration sync only applies to the default configuration file %@"
+          }
+        }
+      }
+    },
+    "配置同步未开启，没有需要同步的内容。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration sync is off, so there is nothing to sync."
+          }
+        }
+      }
+    },
+    "配置文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration file"
+          }
+        }
+      }
+    },
+    "配置文件 %1$@ 权限过于开放（任意用户可写，权限：%2$@）。请执行：chmod o-w \"%3$@\"": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The configuration file %1$@ has unsafe permissions (writable by any user, mode: %2$@). Run: chmod o-w \"%3$@\""
+          }
+        }
+      }
+    },
+    "配置无效。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The configuration is invalid."
+          }
+        }
+      }
+    },
+    "配置里定义的按钮会覆盖消息自带的动作。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buttons defined in the configuration override the actions that come with a message."
+          }
+        }
+      }
+    },
+    "配置错误：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration error: %@"
+          }
+        }
+      }
+    },
+    "重新从服务器同步本主题历史": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync this topic's history from the server again."
+          }
+        }
+      }
+    },
+    "重新向服务器查询主题列表": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask the server for its topic list again."
+          }
+        }
+      }
+    },
+    "重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry"
+          }
+        }
+      }
+    },
+    "重载配置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reload configuration"
+          }
+        }
+      }
+    },
+    "重连时拉取错过的消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fetch missed messages on reconnect"
+          }
+        }
+      }
+    },
+    "钥匙串读取失败，已跳过本次同步，以免把读不到的令牌当成“已删除”同步到其他设备。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keychain read failed. This sync pass was skipped so an unreadable token is not treated as deleted and pushed to other devices."
+          }
+        }
+      }
+    },
+    "钥匙串（推荐）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keychain (recommended)"
+          }
+        }
+      }
+    },
+    "长消息进入通知历史时即完整显示；单条仍可点击「收起」折回": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Long messages appear in full as soon as they reach the notification history; each one can still be folded back with the \"Collapse\" button."
+          }
+        }
+      }
+    },
+    "附件地址无效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid attachment address"
+          }
+        }
+      }
+    },
+    "限制该服务器消息可打开的 URL 方案；自定义列表留空等于全部禁止": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restricts which URL schemes this server's messages may open. An empty custom list denies everything."
+          }
+        }
+      }
+    },
+    "静默": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Silent"
+          }
+        }
+      }
+    },
+    "静默（不弹通知横幅）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Silent (no notification banner)"
+          }
+        }
+      }
+    },
+    "默认 (http/https)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Default (http/https)"
+          }
+        }
+      }
+    },
+    "默认展开消息全文": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand message bodies by default"
+          }
+        }
+      }
+    },
+    "（无写入权限或令牌错误）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " (no write permission or wrong token)"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

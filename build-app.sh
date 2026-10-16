@@ -27,6 +27,15 @@ cp "Resources/Info.plist" "$BUILD_DIR/$APP_BUNDLE/Contents/"
 # Copy icon
 cp "Resources/ntfyx.icns" "$BUILD_DIR/$APP_BUNDLE/Contents/Resources/"
 
+# Copy SwiftPM resource bundles (Localizable.xcstrings compiles into NtfyxCore's bundle;
+# without it the app has no translation tables and every string falls back to Chinese).
+for bundle in "$BUILD_DIR"/*.bundle; do
+    [ -d "$bundle" ] || continue
+    rm -rf "$BUILD_DIR/$APP_BUNDLE/Contents/Resources/$(basename "$bundle")"
+    cp -R "$bundle" "$BUILD_DIR/$APP_BUNDLE/Contents/Resources/"
+    echo "Bundled resources: $(basename "$bundle")"
+done
+
 # Ad-hoc sign the app bundle (required for notifications to work)
 echo "Signing app bundle..."
 codesign --force --deep --sign - "$BUILD_DIR/$APP_BUNDLE"

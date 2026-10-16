@@ -8,7 +8,7 @@ struct TopicDetailView: View {
     @AppStorage(AppSettings.scrollMarksReadKey) private var scrollMarksRead = false
 
     private var topicLabel: String { viewModel.label(for: topicRef) }
-    private var idTooltip: Text { topicLabel == topicRef.topic ? Text(verbatim: "") : Text("主题 id：\(topicRef.topic)") }
+    private var idTooltip: Text { topicLabel == topicRef.topic ? Text(verbatim: "") : Text(LF("主题 id：%@", topicRef.topic)) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,28 +24,28 @@ struct TopicDetailView: View {
         }
         .frame(minWidth: 560)
         .confirmationDialog(
-            "清空主题「\(topicLabel)」的全部消息？",
+            LF("清空主题「%@」的全部消息？", topicLabel),
             isPresented: Binding(
                 get: { viewModel.confirmClearTopic != nil },
                 set: { if !$0 { viewModel.confirmClearTopic = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("清空本地并从服务器删除", role: .destructive) {
+            Button(L("清空本地并从服务器删除"), role: .destructive) {
                 if let ref = viewModel.confirmClearTopic {
                     viewModel.clearTopic(ref, withServer: true)
                 }
             }
-            Button("仅清空本地消息", role: .destructive) {
+            Button(L("仅清空本地消息"), role: .destructive) {
                 if let ref = viewModel.confirmClearTopic {
                     viewModel.clearTopic(ref)
                 }
             }
-            Button("取消", role: .cancel) {
+            Button(L("取消"), role: .cancel) {
                 viewModel.confirmClearTopic = nil
             }
         } message: {
-            Text("「从服务器删除」会同步清掉其他设备上的这些消息；仅清空本地只影响这台 Mac，服务器缓存不变。")
+            Text(L("「从服务器删除」会同步清掉其他设备上的这些消息；仅清空本地只影响这台 Mac，服务器缓存不变。"))
         }
     }
 
@@ -62,34 +62,34 @@ struct TopicDetailView: View {
             Button {
                 viewModel.markAllRead(for: topicRef)
             } label: {
-                Label("全部已读", systemImage: "checkmark.circle")
+                Label(L("全部已读"), systemImage: "checkmark.circle")
             }
-            .help("将该主题全部消息标为已读")
+            .help(L("将该主题全部消息标为已读"))
 
             Toggle(isOn: $viewModel.onlyUnread) {
-                Text("仅看未读")
+                Text(L("仅看未读"))
                     .font(.callout)
             }
             .toggleStyle(.checkbox)
 
-            TextField("搜索标题或正文", text: $viewModel.searchText)
+            TextField(L("搜索标题或正文"), text: $viewModel.searchText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 180)
 
             Button {
                 viewModel.loadFullHistory()
             } label: {
-                Label("加载全部历史", systemImage: "arrow.down.circle")
+                Label(L("加载全部历史"), systemImage: "arrow.down.circle")
             }
             .disabled(isSyncing)
-            .help("从服务器拉取该主题全部缓存消息（可能较慢，注意限速）")
+            .help(L("从服务器拉取该主题全部缓存消息（可能较慢，注意限速）"))
 
             Button(role: .destructive) {
                 viewModel.confirmClearTopic = topicRef
             } label: {
-                Label("清空", systemImage: "trash")
+                Label(L("清空"), systemImage: "trash")
             }
-            .help("清空该主题的历史消息")
+            .help(L("清空该主题的历史消息"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -159,9 +159,9 @@ struct TopicDetailView: View {
             Image(systemName: "tray")
                 .font(.system(size: 32))
                 .foregroundStyle(.tertiary)
-            Text("暂无消息")
+            Text(L("暂无消息"))
                 .foregroundStyle(.secondary)
-            Text("新收到的通知会自动保存在这里；也可点击「加载全部历史」从服务器拉取。")
+            Text(L("新收到的通知会自动保存在这里；也可点击「加载全部历史」从服务器拉取。"))
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -193,47 +193,47 @@ struct TopicDetailView: View {
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
-                .help("关闭提示")
+                .help(L("关闭提示"))
             } else {
                 switch progress.phase {
                 case .syncing:
                     ProgressView()
                         .controlSize(.small)
-                    Text("正在从服务器同步历史…（已接收 \(progress.receivedCount) 条）")
+                    Text(LF("正在从服务器同步历史…（已接收 %d 条）", progress.receivedCount))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 case .rateLimited(let retryAfter):
                     Image(systemName: "exclamationmark.triangle")
                         .foregroundStyle(.orange)
-                    Text("服务器限速，\(Int(retryAfter)) 秒后可重试")
+                    Text(LF("服务器限速，%d 秒后可重试", Int(retryAfter)))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    Button("重试") {
+                    Button(L("重试")) {
                         viewModel.retrySync()
                     }
                     .font(.footnote)
-                    .help("立即重新同步（限速到点后也会自动重试一次）")
+                    .help(L("立即重新同步（限速到点后也会自动重试一次）"))
                 case .failed(let message):
                     Image(systemName: "xmark.octagon")
                         .foregroundStyle(.red)
-                    Text("同步失败：\(message)")
+                    Text(LF("同步失败：%@", message))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    Button("重试") {
+                    Button(L("重试")) {
                         viewModel.retrySync()
                     }
                     .font(.footnote)
-                    .help("重新从服务器同步本主题历史")
+                    .help(L("重新从服务器同步本主题历史"))
                 case .completed(let count):
                     Image(systemName: "checkmark.circle")
                         .foregroundStyle(.green)
-                    Text("同步完成，共 \(count) 条")
+                    Text(LF("同步完成，共 %d 条", count))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 case .idle:
                     if !viewModel.hasMoreMessages && !viewModel.messages.isEmpty {
-                        Text("已加载全部本地消息")
+                        Text(L("已加载全部本地消息"))
                             .font(.footnote)
                             .foregroundStyle(.tertiary)
                     }

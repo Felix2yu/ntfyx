@@ -147,7 +147,7 @@ final class SettingsViewModel {
             case .unreachable(let reason):
                 self.serverTestStates[server.id] = .failed(reason: reason)
             default:
-                self.serverTestStates[server.id] = .failed(reason: "意外的探测结果")
+                self.serverTestStates[server.id] = .failed(reason: L("意外的探测结果"))
             }
         }
     }
@@ -170,12 +170,12 @@ final class SettingsViewModel {
             case .published:
                 self.topicTestStates[topic.id] = .success
             case .writeRejected(let status):
-                let hint = (status == 401 || status == 403) ? "（无写入权限或令牌错误）" : ""
-                self.topicTestStates[topic.id] = .failed(reason: "HTTP \(status)\(hint)")
+                let hint = (status == 401 || status == 403) ? L("（无写入权限或令牌错误）") : ""
+                self.topicTestStates[topic.id] = .failed(reason: LF("HTTP %1$d%2$@", status, hint))
             case .unreachable(let reason):
                 self.topicTestStates[topic.id] = .failed(reason: reason)
             default:
-                self.topicTestStates[topic.id] = .failed(reason: "意外的发送结果")
+                self.topicTestStates[topic.id] = .failed(reason: L("意外的发送结果"))
             }
         }
     }
@@ -235,25 +235,25 @@ final class SettingsViewModel {
         // Validation
         for server in servers {
             if server.url.trimmingCharacters(in: .whitespaces).isEmpty {
-                saveError = "服务器地址不能为空"
+                saveError = L("服务器地址不能为空")
                 return
             }
             for topic in server.topics {
                 if topic.name.trimmingCharacters(in: .whitespaces).isEmpty {
-                    saveError = "主题名称不能为空"
+                    saveError = L("主题名称不能为空")
                     return
                 }
                 // Menu bar rows and notification titles have to stay readable.
                 let note = topic.displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 if note.count > 64 {
-                    saveError = "主题 \(topic.name) 的备注最长 64 个字符"
+                    saveError = LF("主题 %1$@ 的备注最长 64 个字符", topic.name)
                     return
                 }
             }
             // Check for duplicate topic names within a server
             let topicNames = server.topics.map { $0.name }
             if Set(topicNames).count != topicNames.count {
-                saveError = "服务器 \(server.url) 中存在重复的主题名称"
+                saveError = LF("服务器 %@ 中存在重复的主题名称", server.url)
                 return
             }
         }
@@ -265,7 +265,7 @@ final class SettingsViewModel {
         } else if let p = UInt16(localServerPort) {
             port = p
         } else {
-            saveError = "端口号无效"
+            saveError = L("端口号无效")
             return
         }
 
@@ -343,7 +343,7 @@ final class SettingsViewModel {
             // Reset unsaved flag (the assignment above triggers didSet)
             hasUnsavedChanges = false
         } catch {
-            saveError = "保存失败：\(error.localizedDescription)"
+            saveError = LF("保存失败：%@", error.localizedDescription)
         }
     }
 

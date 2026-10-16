@@ -158,7 +158,7 @@ enum MarkdownRenderer {
 
             if let alt = group(1) {
                 // Image: show the alt text with a marker; URLs in ntfy bodies are usually transient.
-                out.append(makePiece("🖼 " + (alt.isEmpty ? "图片" : alt), font: baseFont, color: .secondary))
+                out.append(makePiece("🖼 " + (alt.isEmpty ? L10n.text("图片") : alt), font: baseFont, color: .secondary))
             } else if let label = group(2), let url = group(3) {
                 if let target = URL(string: url) {
                     var piece = makePiece(label, font: baseFont)

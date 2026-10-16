@@ -222,15 +222,15 @@ public enum ConfigError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .fileNotFound:
-            return "未找到配置文件"
+            return L10n.text("未找到配置文件")
         case .invalidYAML(let error):
-            return "YAML 无效：\(error.localizedDescription)"
+            return L10n.format("YAML 无效：%@", error.localizedDescription)
         case .decodingError(let error):
-            return "配置错误：\(error.localizedDescription)"
+            return L10n.format("配置错误：%@", error.localizedDescription)
         case .insecureFilePermissions(let message):
             return message
         case .unknownKeys(let details):
-            return "未知配置项：\n\(details)"
+            return L10n.format("未知配置项：\n%@", details)
         }
     }
 }
@@ -249,7 +249,7 @@ struct ConfigValidator {
                 throw ConfigError.decodingError(NSError(
                     domain: "ConfigValidator",
                     code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "服务器 \(server.url) 未配置任何主题"]
+                    userInfo: [NSLocalizedDescriptionKey: L10n.format("服务器 %@ 未配置任何主题", server.url)]
                 ))
             }
 
@@ -259,7 +259,7 @@ struct ConfigValidator {
                 throw ConfigError.decodingError(NSError(
                     domain: "ConfigValidator",
                     code: 2,
-                    userInfo: [NSLocalizedDescriptionKey: "服务器 \(server.url) 中存在重复的主题名称"]
+                    userInfo: [NSLocalizedDescriptionKey: L10n.format("服务器 %@ 中存在重复的主题名称", server.url)]
                 ))
             }
         }
@@ -271,7 +271,7 @@ struct ConfigValidator {
             throw ConfigError.decodingError(NSError(
                 domain: "ConfigValidator",
                 code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "URL 格式无效：\(urlString)"]
+                userInfo: [NSLocalizedDescriptionKey: L10n.format("URL 格式无效：%@", urlString)]
             ))
         }
 
@@ -280,7 +280,7 @@ struct ConfigValidator {
             throw ConfigError.decodingError(NSError(
                 domain: "ConfigValidator",
                 code: 4,
-                userInfo: [NSLocalizedDescriptionKey: "URL 必须使用 http 或 https 协议：\(urlString)"]
+                userInfo: [NSLocalizedDescriptionKey: L10n.format("URL 必须使用 http 或 https 协议：%@", urlString)]
             ))
         }
 
@@ -288,7 +288,7 @@ struct ConfigValidator {
             throw ConfigError.decodingError(NSError(
                 domain: "ConfigValidator",
                 code: 5,
-                userInfo: [NSLocalizedDescriptionKey: "URL 必须包含有效主机名：\(urlString)"]
+                userInfo: [NSLocalizedDescriptionKey: L10n.format("URL 必须包含有效主机名：%@", urlString)]
             ))
         }
     }

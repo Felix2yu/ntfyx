@@ -16,25 +16,25 @@ public enum ConfigSyncError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .iCloudDriveDisabled:
-            return "iCloud Drive 未开启。请在 系统设置 → Apple 账户 → iCloud 中启用，或在设置里改用一个同步文件夹。"
+            return L10n.text("iCloud Drive 未开启。请在 系统设置 → Apple 账户 → iCloud 中启用，或在设置里改用一个同步文件夹。")
         case .accessDenied(let details):
-            return "无法访问同步文件夹：\(details)。若是 iCloud Drive，请在 系统设置 → 隐私与安全性 → 文件与文件夹 中允许 ntfyx 访问。"
+            return L10n.format("无法访问同步文件夹：%@。若是 iCloud Drive，请在 系统设置 → 隐私与安全性 → 文件与文件夹 中允许 ntfyx 访问。", details)
         case .directoryUnreachable(let details):
-            return "无法使用同步文件夹：\(details)"
+            return L10n.format("无法使用同步文件夹：%@", details)
         case .cloudNotDownloaded:
-            return "云端配置尚未下载到本机，稍后会自动重试。"
+            return L10n.text("云端配置尚未下载到本机，稍后会自动重试。")
         case .cloudUnreadable(let details):
-            return "无法读取云端配置：\(details)"
+            return L10n.format("无法读取云端配置：%@", details)
         case .cloudCorrupted(let details):
-            return "云端配置无法解析：\(details)"
+            return L10n.format("云端配置无法解析：%@", details)
         case .unsupportedVersion(let version):
-            return "云端配置版本 \(version) 比本机 ntfyx 支持的版本更新，已跳过同步以免写坏它。"
+            return L10n.format("云端配置版本 %d 比本机 ntfyx 支持的版本更新，已跳过同步以免写坏它。", version)
         case .cloudWriteFailed(let details):
-            return "写入云端配置失败：\(details)"
+            return L10n.format("写入云端配置失败：%@", details)
         case .localWriteFailed(let details):
-            return "写入本地配置失败：\(details)"
+            return L10n.format("写入本地配置失败：%@", details)
         case .keychainUnreadable:
-            return "钥匙串读取失败，已跳过本次同步，以免把读不到的令牌当成“已删除”同步到其他设备。"
+            return L10n.text("钥匙串读取失败，已跳过本次同步，以免把读不到的令牌当成“已删除”同步到其他设备。")
         }
     }
 }
@@ -124,7 +124,7 @@ public final class CloudConfigStore: @unchecked Sendable {
         if fileManager.fileExists(atPath: root) {
             var isDirectory: ObjCBool = false
             guard fileManager.fileExists(atPath: root, isDirectory: &isDirectory), isDirectory.boolValue else {
-                throw ConfigSyncError.directoryUnreachable("\(root) 不是文件夹")
+                throw ConfigSyncError.directoryUnreachable(L10n.format("%@ 不是文件夹", root))
             }
             return
         }
@@ -137,7 +137,7 @@ public final class CloudConfigStore: @unchecked Sendable {
             try fileManager.createDirectory(atPath: root, withIntermediateDirectories: true)
         } catch let error as NSError {
             if error.code == NSFileWriteFileExistsError {
-                throw ConfigSyncError.directoryUnreachable("\(root) 已被占用为文件")
+                throw ConfigSyncError.directoryUnreachable(L10n.format("%@ 已被占用为文件", root))
             }
             if usesICloudDrive {
                 throw ConfigSyncError.accessDenied(error.localizedDescription)
