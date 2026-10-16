@@ -54,7 +54,47 @@ final class NotificationBannerTests: XCTestCase {
         XCTAssertNotEqual(title, "夜间备份", "标签表情仍然要保留")
     }
 
+    // MARK: - Body blank lines
+
+    private func message(body: String?, contentType: String? = nil) -> NtfyMessage {
+        NtfyMessage(
+            id: "m1", time: 1_700_000_000, event: "message", topic: "nightly-backup",
+            message: body, title: "发布新版本", priority: 3, tags: nil,
+            click: nil, actions: nil, attachment: nil, contentType: contentType, sequenceId: nil
+        )
+    }
+
+    /// Notification Center clips a long body to the first few lines and shows no ellipsis, so a
+    /// paragraph break that lands on the last visible line left the box with an empty bottom row —
+    /// a release banner ended in blank space while every other app's banner ended in text.
+    func testMarkdownParagraphBreaksNeverReachTheBanner() {
+        let markdown = "**仓库**: PelagicaApp/pelagica\n**版本**: 4.12.0 → 4.13.0\n"
+            + "**发布时间**: 2026-10-16 14:09:31\n\n## 更新日志\n\n- 添加了选项\n"
+        XCTAssertEqual(
+            NotificationManager.bannerBody(for: message(body: markdown, contentType: "text/markdown")),
+            "仓库: PelagicaApp/pelagica\n版本: 4.12.0 → 4.13.0\n"
+                + "发布时间: 2026-10-16 14:09:31\n更新日志\n添加了选项"
+        )
+    }
+
+    func testPlainTextBlankLinesAreDropped() {
+        XCTAssertEqual(
+            NotificationManager.bannerBody(for: message(body: "第一行\n\n   \n第二行\n\n")),
+            "第一行\n第二行"
+        )
+    }
+
+    func testSingleLineBodyIsPassedThrough() {
+        XCTAssertEqual(NotificationManager.bannerBody(for: message(body: "磁盘已满")), "磁盘已满")
+    }
+
+    /// A body of nothing but blank lines has no text to show; it must not become a box of blank rows.
+    func testBlankBodyHasNoLinesLeft() {
+        XCTAssertEqual(NotificationManager.bannerBody(for: message(body: "\n \n")), "")
+    }
+
     // MARK: - Icon files
+
     /// Notification Center moves an attachment's file into its own store when the request is
     /// added, so each banner writes the cached PNG back to this path. The name has to be stable
     /// per symbol and must not let two symbols collide on one file.
