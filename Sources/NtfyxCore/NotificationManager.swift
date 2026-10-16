@@ -297,11 +297,22 @@ public final class NotificationManager: NSObject {
         return emojiPrefix + topicLabel
     }
 
+    /// Banner body for a message. Notification Center clips a long body to the first few lines
+    /// and shows no ellipsis, so a paragraph break that lands on the last visible line leaves the
+    /// box with an empty bottom row — unlike every other app. A banner gets one text line per line.
+    nonisolated static func bannerBody(for message: NtfyMessage, fallback: String = "") -> String {
+        let text = message.plainTextMessage ?? message.message ?? fallback
+        return text
+            .components(separatedBy: .newlines)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            .joined(separator: "\n")
+    }
+
     private func showTopicNotification(for message: NtfyMessage, topicConfig: TopicConfig, serverURL: String?, passive: Bool = false) {
         let content = UNMutableNotificationContent()
         // Use plain text versions to strip markdown syntax (macOS notifications don't render markdown)
         content.title = Self.bannerTitle(for: message, topicLabel: topicConfig.label)
-        content.body = message.plainTextMessage ?? message.message ?? topicConfig.label
+        content.body = Self.bannerBody(for: message, fallback: topicConfig.label)
         if passive {
             content.interruptionLevel = .passive
             content.sound = nil
@@ -455,7 +466,7 @@ public final class NotificationManager: NSObject {
         let emojiPrefix = EmojiTags.emojiPrefix(for: message.tags)
         // Use plain text versions to strip markdown syntax (macOS notifications don't render markdown)
         content.title = emojiPrefix + (message.plainTextTitle ?? message.title ?? "ntfyx")
-        content.body = message.plainTextMessage ?? message.message ?? ""
+        content.body = Self.bannerBody(for: message)
         if passive {
             content.interruptionLevel = .passive
             content.sound = nil
