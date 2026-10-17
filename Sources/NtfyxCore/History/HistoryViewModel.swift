@@ -265,6 +265,8 @@ public final class HistoryViewModel {
 
     private func handleSelectionChange() {
         serverSyncNotice = nil
+        // A gesture that ended on the previous topic must not keep reading the new one.
+        scrollSettleTask?.cancel()
         reloadMessages()
         // Only a single topic syncs on selection: the merged view would fan the pull out
         // over every topic of the server, and it stays current through store changes anyway.
@@ -305,6 +307,9 @@ public final class HistoryViewModel {
                 )
                 guard generation == self.loadGeneration else { return }  // stale response
                 self.messages = page
+                // A frame belongs to the layout it was measured in. A different page — or the
+                // same message ids under a different topic — must not inherit the old positions.
+                rowFrames.removeAll(keepingCapacity: true)
                 self.hasMoreMessages = page.count >= Self.pageSize
                 if !liveUpdate {
                     self.scrollReadFrontier = page.map(\.time).max() ?? 0
@@ -445,33 +450,65 @@ public final class HistoryViewModel {
 
     // MARK: - Scroll-to-read (滚动即已读)
 
-    /// Cards that just crossed the visibility threshold, keyed by message id so a row reported
-    /// twice counts once. The settle window is what keeps a flick through a screenful at
-    /// *one* store write, one badge refresh and a handful of requests — instead of doing all
-    /// three per message.
-    private var scrollReadPending: [String: StoredMessage] = [:]
-    private var scrollReadSettleTask: Task<Void, Never>?
-    private static let scrollReadSettleTime: TimeInterval = 0.25
+    /// Last measured position per row — see `reportRowFrame`. Nothing is judged here.
+    @ObservationIgnored private var rowFrames: [String: CGRect] = [:]
+    @ObservationIgnored private var scrollSettleTask: Task<Void, Never>?
+    /// Rows already handed to a write that has not landed yet; a second settle inside that
+    /// window must not send the same ids to the server twice.
+    @ObservationIgnored private var scrollReadInFlight: Set<String> = []
 
-    /// Called for every card that scrolls into view while the setting is on. Only the backlog
-    /// the list was opened with is eligible: a message that lands while the window is up stays
-    /// unread — with its banner — until the user acknowledges it.
-    func markReadOnScroll(_ stored: StoredMessage) {
-        guard !stored.isRead, stored.message.time <= scrollReadFrontier else { return }
-        scrollReadPending[stored.id] = stored
-        scrollReadSettleTask?.cancel()
-        scrollReadSettleTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(Self.scrollReadSettleTime * 1_000_000_000))
+    /// A row counts as read once its head has left the top of the viewport by this fraction of
+    /// its own height. A card that has merely poked 25% *into* the list is a header plus one
+    /// line of body — that is not a message anybody read.
+    private static let scrollReadHeadline: CGFloat = 0.25
+    /// Judged one layout pass after the reports stop arriving: that is what "the scroll came to
+    /// rest" looks like from here, and it does not depend on a scroll-phase callback firing.
+    private static let scrollSettleTime: TimeInterval = 0.15
+
+    /// Rows report their frame in the list's coordinate space as SwiftUI lays them out: y = 0
+    /// is the top of the viewport, so a negative `minY` is a row head that has left the window.
+    /// Nothing is judged per card — the report only keeps the measurement current and restarts
+    /// the settle. `@ObservationIgnored` is what stops a write per layout pass from invalidating
+    /// the very list being measured.
+    func reportRowFrame(_ id: String, frame: CGRect) {
+        guard rowFrames[id] != frame else { return }
+        rowFrames[id] = frame
+        scrollSettleTask?.cancel()
+        scrollSettleTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.scrollSettleTime * 1_000_000_000))
             guard !Task.isCancelled else { return }
-            await self?.flushScrollReads()
+            await self?.commitScrollReads()
         }
     }
 
-    private func flushScrollReads() async {
-        let rows = Array(scrollReadPending.values)
-        scrollReadPending.removeAll()
-        guard !rows.isEmpty else { return }
+    /// Deepest row whose head has left the viewport, nil when none has. Judging the whole list
+    /// at rest instead of per card is what makes the read state one contiguous block: a fast
+    /// flick never lays out the rows it blows past, so they have no frame to report, yet
+    /// everything above the deepest measured row has been scrolled through.
+    private var scrolledPastDepth: Int? {
+        var deepest: Int?
+        for (index, row) in messages.enumerated() {
+            guard let frame = rowFrames[row.id] else { continue }
+            if frame.minY <= -Self.scrollReadHeadline * frame.height { deepest = index }
+        }
+        return deepest
+    }
 
+    private func commitScrollReads() async {
+        guard let depth = scrolledPastDepth else { return }
+        // The frontier holds back a message that landed while the window was up: an automatic
+        // read must never swallow one the user is still waiting for.
+        let rows = messages[...depth].filter {
+            !$0.isRead && !scrollReadInFlight.contains($0.id) && $0.message.time <= scrollReadFrontier
+        }
+        guard !rows.isEmpty else { return }
+        let ids = rows.map(\.id)
+        scrollReadInFlight.formUnion(ids)
+        defer { scrollReadInFlight.subtract(ids) }
+        await markRowsRead(rows)
+    }
+
+    private func markRowsRead(_ rows: [StoredMessage]) async {
         let flipped = (try? await store.markReadBatch(rows)) ?? []
         guard !flipped.isEmpty else { return }
 

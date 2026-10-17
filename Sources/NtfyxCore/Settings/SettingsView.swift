@@ -45,7 +45,7 @@ struct SettingsView: View {
                 Text("简体中文").tag(LanguageChoice.zhHans)
                 Text("English").tag(LanguageChoice.en)
             }
-            .help(L("只切换 ntfyx 的界面文字，保存在本机、不参与 iCloud 同步；服务器发来的消息保持原文"))
+            .help(L("只切换 ntfyx 的界面文字，保存在本机、不参与 iCloud 同步；服务器发来的消息保持原文。主菜单和个别窗口标题要重启 ntfyx 才跟着换"))
 
             Toggle(L("开机时启动"), isOn: Binding(
                 get: { launchAtLogin },
@@ -67,10 +67,10 @@ struct SettingsView: View {
             }
 
             Toggle(L("默认展开消息全文"), isOn: $expandByDefault)
-                .help(L("长消息进入通知历史时即完整显示；单条仍可点击「收起」折回"))
+                .help(L("长消息进入消息记录时即完整显示；单条仍可点击「收起」折回"))
 
             Toggle(L("滚动即已读"), isOn: $scrollMarksRead)
-                .help(L("浏览历史时，卡片有四分之一以上进入视口就标为已读，并像点击卡片那样同步到服务器；已读的条目仍留在列表里，不抽走、不跳位。窗口开着时刚到达的新消息不算，它仍然弹横幅并保持未读"))
+                .help(L("浏览历史时，滚动一停下就判定：某条消息的顶部越过窗口上沿四分之一行高，它连同上面的所有条目一起标为已读，并像点击卡片那样同步到服务器。只露头一角的不算，刚打开主题看到的那一屏也不算。窗口开着时新到的消息同样保持未读、横幅照常弹。已读条目仍留在列表里，不抽走、不跳位"))
 
             LabeledContent(L("消息字号")) {
                 HStack(spacing: 8) {
@@ -82,7 +82,7 @@ struct SettingsView: View {
                         .frame(width: 34, alignment: .trailing)
                 }
             }
-            .help(L("通知历史中消息正文的字体大小，Markdown 标题随字号等比缩放"))
+            .help(L("消息记录里正文的字体大小，Markdown 标题随字号等比缩放"))
         } header: {
             Text(L("通用"))
         }

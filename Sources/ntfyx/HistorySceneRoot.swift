@@ -16,7 +16,7 @@ struct HistorySceneRoot: View {
             }
         }
         .frame(minWidth: 720, minHeight: 480)
-        .navigationTitle(L("通知历史"))
+        .navigationTitle(L("消息记录"))
         .task {
             await env.prepareHistoryViewModel()
         }

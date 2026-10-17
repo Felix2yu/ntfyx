@@ -26,6 +26,9 @@ struct AboutView: View {
         .padding(20)
         .frame(width: 380, height: 210)
         .textSelection(.enabled)
+        // The scene's own `Window(_:)` title is fixed when the app launches, so this view-level
+        // title is what lets 设置 → 界面语言 repaint the title bar immediately.
+        .navigationTitle(L("关于 ntfyx"))
     }
 
     /// Assembled per evaluation so a language switch rewrites the credits without a relaunch.

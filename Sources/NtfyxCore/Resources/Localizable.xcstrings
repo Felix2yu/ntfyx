@@ -991,12 +991,12 @@
         }
       }
     },
-    "只切换 ntfyx 的界面文字，保存在本机、不参与 iCloud 同步；服务器发来的消息保持原文": {
+    "只切换 ntfyx 的界面文字，保存在本机、不参与 iCloud 同步；服务器发来的消息保持原文。主菜单和个别窗口标题要重启 ntfyx 才跟着换": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Only ntfyx's own interface text changes. The choice is saved on this Mac and never synced; messages from your servers keep their original wording."
+            "value": "Only ntfyx's own interface text changes. The choice is saved on this Mac and never synced; messages from your servers keep their original wording. The main menu and a few window titles only follow after ntfyx restarts."
           }
         }
       }
@@ -2301,12 +2301,12 @@
         }
       }
     },
-    "浏览历史时，卡片有四分之一以上进入视口就标为已读，并像点击卡片那样同步到服务器；已读的条目仍留在列表里，不抽走、不跳位。窗口开着时刚到达的新消息不算，它仍然弹横幅并保持未读": {
+    "浏览历史时，滚动一停下就判定：某条消息的顶部越过窗口上沿四分之一行高，它连同上面的所有条目一起标为已读，并像点击卡片那样同步到服务器。只露头一角的不算，刚打开主题看到的那一屏也不算。窗口开着时新到的消息同样保持未读、横幅照常弹。已读条目仍留在列表里，不抽走、不跳位": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "While you browse the history, a card is marked read once roughly a quarter of it is in view, and the change reaches the server just as it would if you clicked the card. Read entries stay in the list: nothing is pulled away, nothing jumps. A message that arrives while the window is open does not count — it still raises a banner and stays unread."
+            "value": "When you browse the history, each time the scroll comes to rest a message whose top has passed the window's top edge by a quarter of its own height is marked read, together with every entry above it, and the change reaches the server just as it would if you clicked the card. A card that only pokes a corner into view does not count, and neither does the screen you get when you first open a topic. A message that arrives while the window is open stays unread and its banner still appears. Read entries stay in the list: nothing is pulled away, nothing jumps."
           }
         }
       }
@@ -2317,6 +2317,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Message font size"
+          }
+        }
+      }
+    },
+    "消息记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message History"
+          }
+        }
+      }
+    },
+    "消息记录…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message History…"
+          }
+        }
+      }
+    },
+    "消息记录里正文的字体大小，Markdown 标题随字号等比缩放": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Font size for message bodies in the history window; Markdown headings scale with it."
           }
         }
       }
@@ -2971,36 +3001,6 @@
         }
       }
     },
-    "通知历史": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Notification History"
-          }
-        }
-      }
-    },
-    "通知历史…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Notification History…"
-          }
-        }
-      }
-    },
-    "通知历史中消息正文的字体大小，Markdown 标题随字号等比缩放": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Font size for message bodies in the history window; Markdown headings scale with it."
-          }
-        }
-      }
-    },
     "通知已暂停": {
       "localizations": {
         "en": {
@@ -3191,12 +3191,12 @@
         }
       }
     },
-    "长消息进入通知历史时即完整显示；单条仍可点击「收起」折回": {
+    "长消息进入消息记录时即完整显示；单条仍可点击「收起」折回": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Long messages appear in full as soon as they reach the notification history; each one can still be folded back with the \"Collapse\" button."
+            "value": "Long messages appear in full as soon as they reach the message history; each one can still be folded back with the \"Collapse\" button."
           }
         }
       }

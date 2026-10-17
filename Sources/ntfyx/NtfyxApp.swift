@@ -40,10 +40,10 @@ struct NtfyxApp: App {
             NtfyxCommands()
         }
 
-        // Single-instance on purpose: every "通知历史" entry point funnels through
+        // Single-instance on purpose: every "消息记录" entry point funnels through
         // openWindow(id: "history"), and a Window scene re-activates the existing window
         // instead of stacking another copy of the same shared view model.
-        Window(L("通知历史"), id: "history") {
+        Window(L("消息记录"), id: "history") {
             HistorySceneRoot()
                 .environment(env)
         }

@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// The named coordinate space both history lists measure their rows in: y = 0 is the top of the
+/// viewport, so a row with a negative `minY` has had its head scroll out of the window.
+enum HistoryListSpace {
+    static let name = "historyList"
+}
+
 /// Message list for a single topic, with toolbar operations
 /// (mark all read, unread filter, search, full history sync, clear).
 struct TopicDetailView: View {
@@ -124,9 +130,11 @@ struct TopicDetailView: View {
                                 }
                             )
                             .id(stored.id)
-                            .onScrollVisibilityChange(threshold: 0.25) { visible in
-                                if visible, scrollMarksRead {
-                                    viewModel.markReadOnScroll(stored)
+                            .onGeometryChange(for: CGRect.self) { proxy in
+                                proxy.frame(in: .named(HistoryListSpace.name))
+                            } action: { frame in
+                                if scrollMarksRead {
+                                    viewModel.reportRowFrame(stored.id, frame: frame)
                                 }
                             }
                             .onAppear {
@@ -145,6 +153,7 @@ struct TopicDetailView: View {
                     .padding(.vertical, 10)
                 }
             }
+            .coordinateSpace(name: HistoryListSpace.name)
             .onAppear {
                 // Always land on the newest message.
                 if let first = viewModel.messages.first {

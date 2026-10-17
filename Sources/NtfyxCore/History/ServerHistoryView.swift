@@ -91,9 +91,11 @@ struct ServerHistoryView: View {
                                 showsTopic: true
                             )
                             .id(stored.id)
-                            .onScrollVisibilityChange(threshold: 0.25) { visible in
-                                if visible, scrollMarksRead {
-                                    viewModel.markReadOnScroll(stored)
+                            .onGeometryChange(for: CGRect.self) { proxy in
+                                proxy.frame(in: .named(HistoryListSpace.name))
+                            } action: { frame in
+                                if scrollMarksRead {
+                                    viewModel.reportRowFrame(stored.id, frame: frame)
                                 }
                             }
                             .onAppear {
@@ -112,6 +114,7 @@ struct ServerHistoryView: View {
                     .padding(.vertical, 10)
                 }
             }
+            .coordinateSpace(name: HistoryListSpace.name)
             .onAppear {
                 // Always land on the newest message.
                 if let first = viewModel.messages.first {

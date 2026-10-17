@@ -36,6 +36,9 @@ struct PermissionPromptView: View {
         .onDisappear {
             PermissionPromptCoordinator.shared.resolveFromWindowClose()
         }
+        // Same reason as AboutView: the Window scene's title is frozen at launch, only a
+        // view-level title follows the live language.
+        .navigationTitle(L("ntfyx - 通知权限设置"))
     }
 
     private var message: String {

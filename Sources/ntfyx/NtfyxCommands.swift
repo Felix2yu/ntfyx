@@ -16,7 +16,7 @@ struct NtfyxCommands: Commands {
         }
 
         CommandGroup(replacing: .newItem) {
-            Button(L10n.text("通知历史…")) {
+            Button(L10n.text("消息记录…")) {
                 openWindow(id: "history")
             }
             .keyboardShortcut("h", modifiers: [.command, .shift])

@@ -29,7 +29,7 @@ struct MenuBarMenuView: View {
             .keyboardShortcut("p", modifiers: .command)
 
         // ⇧⌘H keeps ⌘H (隐藏应用) free for the app's main menu.
-        Button(L("通知历史…")) {
+        Button(L("消息记录…")) {
             openWindow(id: "history")
         }
         .keyboardShortcut("h", modifiers: [.command, .shift])
