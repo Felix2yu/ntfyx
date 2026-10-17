@@ -610,6 +610,26 @@ final class HistoryViewModelTests: XCTestCase {
 
     // MARK: - 滚动即已读
 
+    /// 代替 SwiftUI 的布局回报：`tops[i]` 是第 i 行 frame 的上沿，nil 表示那一行压根没被排出来、
+    /// 什么都没报（快滑一划正是如此）。坐标系里 y = 0 就是视口上沿，负值即行头已离开窗口。
+    private func reportRows(
+        _ vm: HistoryViewModel, tops: [CGFloat?], rowHeight: CGFloat = 60
+    ) {
+        for (index, row) in vm.messages.enumerated() where index < tops.count {
+            guard let top = tops[index] else { continue }
+            vm.reportRowFrame(row.id, frame: CGRect(x: 0, y: top, width: 300, height: rowHeight))
+        }
+    }
+
+    /// 整列等距排布：行距 8，第 i 行上沿 = headOffset + i * (行高 + 8)。
+    private func reportStack(_ vm: HistoryViewModel, headOffset: CGFloat, rowHeight: CGFloat = 60) {
+        reportRows(
+            vm,
+            tops: vm.messages.indices.map { headOffset + CGFloat($0) * (rowHeight + 8) },
+            rowHeight: rowHeight
+        )
+    }
+
     /// 滚过的卡片攒成一批发作：一次落库、一次服务器请求、列表不重建（已读行仍留在原处），
     /// 只有侧栏与角标跟着降下来。
     func testScrollReadBatchesWritesAndServerRequests() async throws {
@@ -627,7 +647,7 @@ final class HistoryViewModelTests: XCTestCase {
         vm.selectTopic(ref)
         try await waitUntil { vm.messages.count == 3 }
 
-        for row in vm.messages { vm.markReadOnScroll(row) }
+        reportStack(vm, headOffset: -300)
         try await waitUntil { vm.messages.allSatisfy(\.isRead) }
 
         XCTAssertEqual(vm.messages.count, 3, "已读的行仍留在列表里，滚动位置不能被抽走")
@@ -643,8 +663,8 @@ final class HistoryViewModelTests: XCTestCase {
         XCTAssertTrue(mine[0].hasSuffix("/read"), mine.description)
         XCTAssertEqual(Set(issued.split(separator: ",").map(String.init)), ["m1", "m2", "m3"])
 
-        // 再滚一次同一屏：全是已读，既不再落库也不再请求。
-        for row in vm.messages { vm.markReadOnScroll(row) }
+        // 同一屏再停一次：位置没变，布局不会再回报，既不该落库也不该请求。
+        reportStack(vm, headOffset: -300)
         try await Task.sleep(nanoseconds: 400_000_000)  // 比 settle 窗口长一点
         XCTAssertEqual(MarkReadMockProtocol.paths.filter { $0.hasPrefix("alpha/") }.count, 1,
                        "重复滚过不能重复请求：\(MarkReadMockProtocol.paths)")
@@ -668,12 +688,150 @@ final class HistoryViewModelTests: XCTestCase {
         vm.refreshSidebar()
         try await waitUntil { vm.totalUnread == 2 }
 
-        vm.markReadOnScroll(vm.messages[0])
+        reportStack(vm, headOffset: -300)
         try await waitUntil { vm.totalUnread == 1 }
 
         XCTAssertEqual(vm.messages.count, 1, "本主题的列表内容不变")
         XCTAssertEqual(vm.unread(for: TopicRef(serverURL: "https://s.example", topic: "alpha")), 0)
         XCTAssertEqual(vm.unread(for: TopicRef(serverURL: "https://s.example", topic: "beta")), 1)
+    }
+
+    /// 点开主题只是"看到"，不是"滚过"：首屏必须保持未读，否则未读数在点击的一瞬间就清零。
+    func testOpeningATopicDoesNotReadTheFirstScreen() async throws {
+        let store = try MessageStore.inMemory()
+        for id in ["m1", "m2"] {
+            try await store.upsert(makeMessage(id: id, topic: "alpha"), serverURL: "https://s.example")
+        }
+        let sync = HistorySyncService(store: store)
+        sync.poll = { _, _, _, _, _ in NtfyPollClient.PollResult() }
+        let vm = HistoryViewModel(store: store, syncService: sync)
+        vm.serverMarkReadSession = markReadMockSession(status: 200)
+        let ref = TopicRef(serverURL: "https://s.example", topic: "alpha")
+
+        vm.selectTopic(ref)
+        try await waitUntil { vm.messages.count == 2 }
+
+        // 首屏：两张卡片都完整待在窗口里，行头谁也没离开上沿 —— 停下也不算看过。
+        reportStack(vm, headOffset: 0)
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        var counts = try await store.unreadCountsByTopic()
+        XCTAssertEqual(counts[ref] ?? 0, 2, "没有滚动动作就不能把首屏算成已读")
+        XCTAssertTrue(MarkReadMockProtocol.paths.filter { $0.hasPrefix("alpha/") }.isEmpty,
+                      MarkReadMockProtocol.paths.description)
+
+        // 把它们滚出窗口上沿之后，同一批卡片才被判为已读。
+        reportStack(vm, headOffset: -300)
+        try await waitUntil { vm.messages.allSatisfy(\.isRead) }
+        counts = try await store.unreadCountsByTopic()
+        XCTAssertEqual(counts[ref] ?? 0, 0)
+    }
+
+    /// 一划带过十几条时被标已读的必须是一段连续前缀，而不是"刚好被量到的那几张"：
+    /// 这里只有中间一行报了自己的位置——快滑时 LazyVStack 压根不会排出被跳过的那些行——
+    /// 它上面没报的两行也必须跟着已读，它下面还在窗口里的两行必须保持未读。
+    func testScrollReadMarksAContiguousPrefix() async throws {
+        let store = try MessageStore.inMemory()
+        for (offset, id) in ["m1", "m2", "m3", "m4", "m5"].enumerated() {
+            try await store.upsert(
+                makeMessage(id: id, topic: "alpha", time: 100 - offset), serverURL: "https://s.example"
+            )
+        }
+        let sync = HistorySyncService(store: store)
+        sync.poll = { _, _, _, _, _ in NtfyPollClient.PollResult() }
+        let vm = HistoryViewModel(store: store, syncService: sync)
+        vm.serverMarkReadSession = markReadMockSession(status: 200)
+        let ref = TopicRef(serverURL: "https://s.example", topic: "alpha")
+
+        vm.selectTopic(ref)
+        try await waitUntil { vm.messages.count == 5 }
+
+        // 行高 60 → 水位 = 上沿以上 15。只有第 3 行过了线，第 1、2 行连位置都没报。
+        reportRows(vm, tops: [nil, nil, -100, 20, 90])
+        try await waitUntil { vm.messages[2].isRead }
+
+        XCTAssertEqual(vm.messages.map(\.isRead), [true, true, true, false, false],
+                       "已读必须是一段连续前缀，不能跳号")
+        let counts = try await store.unreadCountsByTopic()
+        XCTAssertEqual(counts[ref] ?? 0, 2, "库里也必须是同一段前缀已读")
+    }
+
+    /// 判据是行头**离开**窗口上沿四分之一行高，不是露进来越多越算看过：一条 200 高的长消息
+    /// 只出去 40（20%）时用户看到的还是开头几行，不能算读过。
+    func testReadNeedsAQuarterOfTheRowAboveTheWindow() async throws {
+        let store = try MessageStore.inMemory()
+        try await store.upsert(makeMessage(id: "long", topic: "alpha"), serverURL: "https://s.example")
+        let sync = HistorySyncService(store: store)
+        sync.poll = { _, _, _, _, _ in NtfyPollClient.PollResult() }
+        let vm = HistoryViewModel(store: store, syncService: sync)
+        vm.serverMarkReadSession = markReadMockSession(status: 200)
+
+        vm.selectTopic(TopicRef(serverURL: "https://s.example", topic: "alpha"))
+        try await waitUntil { vm.messages.count == 1 }
+
+        reportRows(vm, tops: [-40], rowHeight: 200)
+        try await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertEqual(vm.messages[0].isRead, false, "行头只出去 20% 还不能算读过")
+
+        reportRows(vm, tops: [-50], rowHeight: 200)
+        try await waitUntil { vm.messages[0].isRead }
+    }
+
+    /// 开着窗口时到达的新消息不属于"滚过的历史"：即便它已经躺在上沿之外、被算进水位，
+    /// 用户也可能根本没在看列表，所以既不能自动已读，更不能顺手撤掉横幅。
+    func testLiveArrivalSurvivesTheScrollItLandsOn() async throws {
+        let store = try MessageStore.inMemory()
+        try await store.upsert(makeMessage(id: "old", topic: "alpha", time: 1), serverURL: "https://s.example")
+        let sync = HistorySyncService(store: store)
+        sync.poll = { _, _, _, _, _ in NtfyPollClient.PollResult() }
+        let vm = HistoryViewModel(store: store, syncService: sync)
+        vm.serverMarkReadSession = markReadMockSession(status: 200)
+        let ref = TopicRef(serverURL: "https://s.example", topic: "alpha")
+
+        vm.selectTopic(ref)
+        try await waitUntil { vm.messages.count == 1 }
+
+        // 打开时就在那条历史：滚出上沿即已读。
+        reportStack(vm, headOffset: -300)
+        try await waitUntil { vm.messages[0].isRead }
+
+        // 实时到达：列表因 store 变化重查，新条排在最前，但仍是未读。
+        try await store.upsert(makeMessage(id: "live", topic: "alpha", time: 2), serverURL: "https://s.example")
+        HistoryChangeBus.shared.post(topicRef: ref)
+        try await waitUntil { vm.messages.map(\.message.id) == ["live", "old"] }
+
+        // 整列滚过水位，live 那条也在段内——水位不碰它。
+        reportStack(vm, headOffset: -300)
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        let counts = try await store.unreadCountsByTopic()
+        XCTAssertEqual(counts[ref] ?? 0, 1, "刚到的一条不能被自动标成已读")
+        XCTAssertEqual(vm.messages.first { $0.message.id == "live" }?.isRead, false)
+    }
+
+    /// 切主题把那一刻的存量算作可自动已读的历史：之前 live 到达的那条，滚动它时才被判为已读。
+    func testSelectingAgainMakesEarlierLiveMessagesBacklog() async throws {
+        let store = try MessageStore.inMemory()
+        try await store.upsert(makeMessage(id: "live", topic: "alpha", time: 2), serverURL: "https://s.example")
+        let sync = HistorySyncService(store: store)
+        sync.poll = { _, _, _, _, _ in NtfyPollClient.PollResult() }
+        let vm = HistoryViewModel(store: store, syncService: sync)
+        vm.serverMarkReadSession = markReadMockSession(status: 200)
+
+        vm.selectTopic(TopicRef(serverURL: "https://s.example", topic: "alpha"))
+        try await waitUntil { vm.messages.count == 1 }
+        try await waitUntil { vm.totalUnread == 1 }
+
+        // 选中主题只是把这条摆进窗口，行头没离开上沿 —— 停下也不算滚过。
+        reportStack(vm, headOffset: 0)
+        try await Task.sleep(nanoseconds: 400_000_000)
+        var counts = try await store.unreadCountsByTopic()
+        XCTAssertEqual(counts.values.reduce(0, +), 1, "点开主题的一瞬间不该清零")
+
+        reportStack(vm, headOffset: -300)
+        try await waitUntil { vm.messages[0].isRead }
+        counts = try await store.unreadCountsByTopic()
+        XCTAssertEqual(counts.values.reduce(0, +), 0)
     }
 
     private func configuredStore(topics: [String]) throws -> (path: String, configStore: ConfigStore) {
