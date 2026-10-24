@@ -329,6 +329,11 @@ public actor MessageStore {
                 sql: "DELETE FROM sync_state WHERE server_url = ? AND topic = ?",
                 arguments: [serverURL, topic]
             )
+            // Undeliverable read marks must not outlive the topic they address.
+            try db.execute(
+                sql: "DELETE FROM pending_read WHERE server_url = ? AND topic = ?",
+                arguments: [serverURL, topic]
+            )
         }
         // The stored watermark is gone with the row, so the cached one has to go too —
         // otherwise re-adding the topic would file its replayed messages as read.
@@ -349,6 +354,12 @@ public actor MessageStore {
 
         static let standard = RetentionPolicy()
     }
+
+    /// Queued read marks only leave through a successful replay. A server that keeps
+    /// refusing them (auth on, no usable token) would grow the outbox forever, so it is
+    /// bounded by age like every other retention rule — a token configured later than
+    /// this simply no longer syncs the oldest marks.
+    static let pendingReadRetentionDays = 30
 
     /// Deletes the number of rows changed by the most recently completed statement.
     @discardableResult
@@ -390,6 +401,11 @@ public actor MessageStore {
                 [policy.maxReadRowsPerTopic]
             ))
         }
+        // Unconditional: the outbox shrinks only through replay, so age is its only bound.
+        rules.append((
+            "DELETE FROM pending_read WHERE enqueued_at < ?",
+            [nowSeconds - Self.pendingReadRetentionDays * daySeconds]
+        ))
 
         return try db.inDatabase { db in
             // Each rule stays its own statement (and implicit transaction), matching
@@ -577,6 +593,61 @@ public actor MessageStore {
                 sql: "SELECT COUNT(*) FROM messages WHERE server_url = ? AND topic = ? AND is_deleted = 0",
                 arguments: [serverURL, topic]
             ) ?? 0
+        }
+    }
+
+    // MARK: - Pending read sync (outbox)
+
+    /// Queues read marks the server has not accepted yet. Marking read is local-first
+    /// (`markRead`/`markReadBatch` write before the /read request leaves), so a mark made
+    /// while offline — or rejected mid-chunk by a rate limit — has to survive here until
+    /// a reconnect replays it. Idempotent by target id.
+    func enqueuePendingReads(serverURL: String, topic: String, ids: [String]) throws {
+        guard !ids.isEmpty else { return }
+        try db.inTransaction(.immediate) { db in
+            let now = Int(Date().timeIntervalSince1970)
+            for id in ids {
+                try db.execute(
+                    sql: """
+                    INSERT INTO pending_read (server_url, topic, target_id, enqueued_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(server_url, topic, target_id) DO UPDATE SET enqueued_at = excluded.enqueued_at
+                    """,
+                    arguments: [serverURL, topic, id, now]
+                )
+            }
+            return .commit
+        }
+    }
+
+    /// All queued read targets of one server, grouped by topic, oldest first — the input
+    /// of the drain that replays them once the server is reachable again.
+    func pendingReadIDs(serverURL: String) throws -> [String: [String]] {
+        try db.inDatabase { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT topic, target_id FROM pending_read
+                WHERE server_url = ? ORDER BY topic, enqueued_at, target_id
+                """,
+                arguments: [serverURL]
+            )
+            return Dictionary(grouping: rows, by: { ($0["topic"] as String?) ?? "" })
+                .mapValues { $0.compactMap { $0["target_id"] as String? } }
+        }
+    }
+
+    /// Drops the targets a drain got the server to accept.
+    func removePendingReads(serverURL: String, topic: String, ids: [String]) throws {
+        guard !ids.isEmpty else { return }
+        try db.inTransaction(.immediate) { db in
+            for id in ids {
+                try db.execute(
+                    sql: "DELETE FROM pending_read WHERE server_url = ? AND topic = ? AND target_id = ?",
+                    arguments: [serverURL, topic, id]
+                )
+            }
+            return .commit
         }
     }
 

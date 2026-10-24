@@ -285,8 +285,11 @@ public final class HistoryViewModel {
     }
 
     /// - Parameter liveUpdate: true when the reload follows a store change (a message arrived or
-    ///   was edited) instead of a user action. Only user-driven loads move `scrollReadFrontier`,
-    ///   so the very list a live message lands on can never auto-read it.
+    ///   was edited) instead of a user action. Only user-driven loads move `scrollReadFrontier`
+    ///   wholesale, so the very list a live message lands on can never auto-read it; a live
+    ///   reload may still let the frontier follow the newest row while the user sits at the
+    ///   top — they are watching the live end of the timeline — and it must not collapse the
+    ///   pages the user already scrolled open.
     func reloadMessages(liveUpdate: Bool = false) {
         guard let scope = messageScope else {
             messages = []
@@ -298,10 +301,14 @@ public final class HistoryViewModel {
         let generation = loadGeneration
         let onlyUnread = self.onlyUnread
         let searchText = self.searchText
+        // Read before the async fetch: once `messages` is replaced, `rowFrames` describes a
+        // layout that no longer exists, and `messages.count` is the depth to restore.
+        let userAtTop = userIsAtListTop
+        let previousDepth = liveUpdate ? messages.count : 0
         Task { [weak self] in
             guard let self else { return }
             do {
-                let page = try await self.store.messages(
+                var page = try await self.store.messages(
                     serverURL: scope.serverURL,
                     topic: scope.topic,
                     limit: Self.pageSize,
@@ -309,14 +316,41 @@ public final class HistoryViewModel {
                     onlyUnread: onlyUnread,
                     searchText: searchText.isEmpty ? nil : searchText
                 )
+                var lastBatchFull = page.count >= Self.pageSize
+                // A live reload replaces the array wholesale, so without this loop it would
+                // collapse a list the user had paged open with 加载更多 back to page one —
+                // yanking the scroll position and pulling the rows being read out from
+                // under the scroll-read judge.
+                while lastBatchFull, page.count < previousDepth, generation == self.loadGeneration {
+                    let older = try await self.store.messages(
+                        serverURL: scope.serverURL,
+                        topic: scope.topic,
+                        limit: Self.pageSize,
+                        before: page.last?.cursor,
+                        onlyUnread: onlyUnread,
+                        searchText: searchText.isEmpty ? nil : searchText
+                    )
+                    if older.isEmpty {
+                        lastBatchFull = false
+                        break
+                    }
+                    page.append(contentsOf: older)
+                    lastBatchFull = older.count >= Self.pageSize
+                }
                 guard generation == self.loadGeneration else { return }  // stale response
                 self.messages = page
                 // A frame belongs to the layout it was measured in. A different page — or the
                 // same message ids under a different topic — must not inherit the old positions.
                 rowFrames.removeAll(keepingCapacity: true)
-                self.hasMoreMessages = page.count >= Self.pageSize
+                self.hasMoreMessages = lastBatchFull
+                let newestLoaded = page.map(\.time).max() ?? 0
                 if !liveUpdate {
-                    self.scrollReadFrontier = page.map(\.time).max() ?? 0
+                    self.scrollReadFrontier = newestLoaded
+                } else if userAtTop {
+                    // Watching the live end of the timeline: a newly arrived row was on screen,
+                    // so scrolling past it may read it. Deep in the history the frontier stays
+                    // put — a burst at the top must not become read by a gesture below it.
+                    self.scrollReadFrontier = max(self.scrollReadFrontier, newestLoaded)
                 }
             } catch {
                 Log.error("History: failed to load messages: \(error)")
@@ -442,13 +476,19 @@ public final class HistoryViewModel {
             NotificationManager.shared.revoke(messageIDs: [messageID])
             // There is no "mark unread" endpoint; marking read asks the server to
             // broadcast message_clear so other devices converge too.
-            await MessageActionService.markReadOnServer(
+            let synced = await MessageActionService.markReadOnServer(
                 serverURL: ref.serverURL,
                 topic: ref.topic,
                 sequenceID: sequenceID,
                 messageID: messageID,
                 authToken: configStore.authToken(forServer: ref.serverURL)
             )
+            if !synced,
+               let targetID = MessageActionService.serverTargetID(sequenceID: sequenceID, messageID: messageID) {
+                try? await self.store.enqueuePendingReads(
+                    serverURL: ref.serverURL, topic: ref.topic, ids: [targetID]
+                )
+            }
         }
     }
 
@@ -498,7 +538,22 @@ public final class HistoryViewModel {
         return deepest
     }
 
+    /// Whether the newest row is still at the top of the viewport: the user is watching the
+    /// live end of the timeline. The first row's *own* frame decides — an absent measurement
+    /// means the row is not materialized, which deep in a LazyVStack is exactly the
+    /// "scrolled away" case, so it must not read as "at top".
+    private var userIsAtListTop: Bool {
+        guard let first = messages.first, let frame = rowFrames[first.id] else { return false }
+        return frame.minY > -Self.scrollReadHeadline * frame.height
+    }
+
     private func commitScrollReads() async {
+        // Scrolling back up to the live end puts the newest rows on screen. Having seen
+        // them, they join the scroll-readable range — otherwise rows that arrived while the
+        // user was deep in the history could never be read by scrolling at all.
+        if userIsAtListTop, let newest = messages.first {
+            scrollReadFrontier = max(scrollReadFrontier, newest.time)
+        }
         guard let depth = scrolledPastDepth else { return }
         // The frontier holds back a message that landed while the window was up: an automatic
         // read must never swallow one the user is still waiting for.
@@ -529,13 +584,21 @@ public final class HistoryViewModel {
         NotificationManager.shared.revoke(messageIDs: flipped.map { $0.message.id })
 
         for (ref, group) in Dictionary(grouping: flipped, by: { $0.topicRef }) {
-            await MessageActionService.markAllReadOnServer(
+            let outcome = await MessageActionService.markReadTargetsOnServer(
                 serverURL: ref.serverURL,
                 topic: ref.topic,
                 targets: group.map { (sequenceID: $0.message.sequenceId, messageID: $0.message.id) },
                 authToken: configStore.authToken(forServer: ref.serverURL),
                 session: serverMarkReadSession
             )
+            // The mark is local-first, so a request that could not go through must not
+            // vanish: queue it and let the reconnect drain replay it. Without this, a
+            // scroll-read made during a VPN hiccup stayed unread on every other device.
+            if !outcome.unsent.isEmpty {
+                try? await store.enqueuePendingReads(
+                    serverURL: ref.serverURL, topic: ref.topic, ids: outcome.unsent
+                )
+            }
         }
     }
 
@@ -582,23 +645,39 @@ public final class HistoryViewModel {
         guard syncToServer else { return }
 
         // Sync at most the newest `serverMarkReadCap` targets; older unread messages on
-        // other devices converge when the user reads them individually there.
-        let synced = await MessageActionService.markAllReadOnServer(
+        // other devices converge when the user reads them individually there. The beyond-cap
+        // remainder is deliberately not queued — the cap exists to protect the rate limit.
+        let capped = Array(targets.prefix(Self.serverMarkReadCap))
+        let result = await MessageActionService.markReadTargetsOnServer(
             serverURL: ref.serverURL,
             topic: ref.topic,
-            targets: Array(targets.prefix(Self.serverMarkReadCap)),
+            targets: capped,
             authToken: configStore.authToken(forServer: ref.serverURL),
             session: serverMarkReadSession
         )
+        if !result.unsent.isEmpty {
+            try? await store.enqueuePendingReads(
+                serverURL: ref.serverURL, topic: ref.topic, ids: result.unsent
+            )
+        }
         let total = targets.count
-        guard synced < total else {
+        guard result.synced < total else {
             serverSyncNotice = nil
             return
         }
-        if total > Self.serverMarkReadCap {
-            serverSyncNotice = LF("本地已全部标为已读；服务器已同步 %1$d 条，其余超出单次上限 %2$d 条未同步（限速保护）。", synced, Self.serverMarkReadCap)
-        } else {
-            serverSyncNotice = LF("本地已全部标为已读；服务器同步在 %1$d/%2$d 处停止（离线或无写入权限）。", synced, total)
+        switch result.stop {
+        case .rejected(let status):
+            // The server refuses the write itself (auth enabled, token missing/invalid or
+            // read-only). The marks stay queued, so configuring a valid token later syncs
+            // them; the notice has to name the actual problem instead of promising a retry
+            // that cannot succeed.
+            serverSyncNotice = LF("本地已全部标为已读；服务器同步在 %1$d/%2$d 处被拒绝（HTTP %3$d：token 缺失、无效或无写权限）。标记已排队，配置有效 token 后会自动补同步。", result.synced, capped.count, status)
+        default:
+            if total > Self.serverMarkReadCap, result.unsent.isEmpty {
+                serverSyncNotice = LF("本地已全部标为已读；服务器已同步 %1$d 条，其余超出单次上限 %2$d 条未同步（限速保护）。", result.synced, Self.serverMarkReadCap)
+            } else {
+                serverSyncNotice = LF("本地已全部标为已读；服务器同步在 %1$d/%2$d 处暂停，剩余 %3$d 条已排队，连接恢复后自动重试。", result.synced, capped.count, result.unsent.count)
+            }
         }
     }
 

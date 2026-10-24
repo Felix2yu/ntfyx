@@ -95,6 +95,10 @@ enum NtfyPollClient {
         var actionEventCount = 0
         /// The newest event seen, message or action — what the `since` cursor advances to.
         var newestEvent: NtfyMessage?
+        /// The server capped the replay (`X-Messages-Truncated`) and dropped its OLDER
+        /// rows to fit. Advancing a sync cursor past a truncated replay would orphan
+        /// those rows, so the caller must not treat the newest event as fully caught up.
+        var truncated = false
     }
 
     /// Streams the poll response and hands the replayed events over in batches. A full sync
@@ -145,6 +149,10 @@ enum NtfyPollClient {
             throw PollError.http(status: httpResponse.statusCode, retryAfter: retryAfter)
         }
 
+        // Read before the body streams: the header is set ahead of the first row.
+        let truncated = (response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "X-Messages-Truncated") == "1"
+
         var result = PollResult()
         var batch: [NtfyMessage] = []
         let decoder = JSONDecoder()
@@ -182,6 +190,7 @@ enum NtfyPollClient {
         if !batch.isEmpty {
             try await onEvents(batch)
         }
+        result.truncated = truncated
         return result
     }
 }

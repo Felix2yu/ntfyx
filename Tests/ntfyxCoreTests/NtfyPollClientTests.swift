@@ -7,9 +7,14 @@ import XCTest
 private final class PollBodyProtocol: URLProtocol {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var _lines: [String] = []
+    nonisolated(unsafe) private static var _headers: [String: String] = [:]
 
     static func reset(lines: [String]) {
-        lock.lock(); _lines = lines; lock.unlock()
+        lock.lock(); _lines = lines; _headers = [:]; lock.unlock()
+    }
+
+    static func setHeaders(_ headers: [String: String]) {
+        lock.lock(); _headers = headers; lock.unlock()
     }
 
     static var lines: [String] {
@@ -21,8 +26,11 @@ private final class PollBodyProtocol: URLProtocol {
 
     override func startLoading() {
         let body = PollBodyProtocol.lines
+        PollBodyProtocol.lock.lock()
+        let headers = PollBodyProtocol._headers
+        PollBodyProtocol.lock.unlock()
         let response = HTTPURLResponse(
-            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: headers
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         if !body.isEmpty {
@@ -97,6 +105,28 @@ final class NtfyPollClientTests: XCTestCase {
         XCTAssertEqual(box.ids.count, total)
         XCTAssertEqual(box.ids.first, "m0")
         XCTAssertEqual(box.ids.last, "m\(total - 1)")
+    }
+
+    /// `X-Messages-Truncated: 1` 是服务器在说“回放按体积上限截断了，丢掉的是更旧的行”。
+    /// 客户端必须把旗标带回给调用方，否则同步游标会越过被丢掉的积压。
+    func testTruncationHeaderFlagsTheResult() async throws {
+        try await withMockedPolling(lines: [pollLine(id: "m1", time: 1_700_000_000)]) {
+            PollBodyProtocol.setHeaders(["X-Messages-Truncated": "1"])
+            let result = try await NtfyPollClient.poll(
+                serverURL: "https://ntfy.example.com", topic: "alerts",
+                since: "all", authToken: nil
+            ) { _ in }
+            XCTAssertTrue(result.truncated)
+            XCTAssertEqual(result.messageCount, 1)
+        }
+
+        try await withMockedPolling(lines: [pollLine(id: "m1", time: 1_700_000_000)]) {
+            let result = try await NtfyPollClient.poll(
+                serverURL: "https://ntfy.example.com", topic: "alerts",
+                since: "all", authToken: nil
+            ) { _ in }
+            XCTAssertFalse(result.truncated)
+        }
     }
 
     /// Delete and clear events ride along in message order, so an event still arrives after

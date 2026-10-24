@@ -2091,12 +2091,22 @@
         }
       }
     },
-    "本地已全部标为已读；服务器同步在 %1$d/%2$d 处停止（离线或无写入权限）。": {
+    "本地已全部标为已读；服务器同步在 %1$d/%2$d 处暂停，剩余 %3$d 条已排队，连接恢复后自动重试。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Everything is marked as read on this device; syncing to the server stopped at %1$d/%2$d (offline or no write access)."
+            "value": "Everything is marked as read on this device; server sync paused at %1$d/%2$d, the remaining %3$d marks are queued and will retry when the connection is back."
+          }
+        }
+      }
+    },
+    "本地已全部标为已读；服务器同步在 %1$d/%2$d 处被拒绝（HTTP %3$d：token 缺失、无效或无写权限）。标记已排队，配置有效 token 后会自动补同步。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything is marked as read on this device; the server refused syncing at %1$d/%2$d (HTTP %3$d: token missing, invalid, or no write permission). The marks are queued and will sync once a valid token is configured."
           }
         }
       }

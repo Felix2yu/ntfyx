@@ -138,6 +138,20 @@ enum MessageActionService {
         return synced
     }
 
+    /// Why a /read request did not go through. The fork server refuses anonymous writes
+    /// with 401/403 as soon as auth is enabled (`auth-file`): without a token every
+    /// attempt fails the same way, so no amount of retrying fixes it — only a valid
+    /// token in the configuration does. `failed`, by contrast, is worth replaying as-is.
+    enum ReadMarkOutcome: Equatable {
+        /// 2xx, or 404 — already gone is the state we wanted anyway.
+        case accepted
+        /// 401/403 — the server refuses the write itself (token missing, invalid, or
+        /// without write permission for the topic).
+        case rejected(status: Int)
+        /// Network error, 429 or 5xx — transient.
+        case failed
+    }
+
     /// Requests the server to mark a cached message as read:
     /// `GET {server}/{topic}/{sequence_id}/read` (alias of `/clear`). The server turns this
     /// into a `message_clear` broadcast, so every other device follows along.
@@ -156,10 +170,11 @@ enum MessageActionService {
         guard let targetID = serverTargetID(sequenceID: sequenceID, messageID: messageID) else {
             return false
         }
-        return await markReadChunkOnServer(
+        let outcome = await markReadChunkOnServer(
             serverURL: serverURL, topic: topic, ids: [targetID],
             authToken: authToken, session: session
         )
+        return outcome == .accepted
     }
 
     /// Marks a batch of messages read on the server. One request carries up to
@@ -168,11 +183,49 @@ enum MessageActionService {
     ///
     /// The server still publishes one `message_clear` per id and each one spends a unit of the
     /// visitor's message budget, so a chunk can fail partway through having already broadcast
-    /// some of its ids; the count returned is therefore the ids in the chunks that came back
-    /// clean, i.e. a lower bound of what actually converged.
-    /// Stops after the first rejected chunk rather than burning requests on a rate-limited
-    /// or read-only connection.
-    /// - Returns: how many targets the server accepted.
+    /// some of its ids; `synced` is therefore the ids in the chunks that came back clean, i.e.
+    /// a lower bound of what actually converged. `unsent` carries everything from the first
+    /// rejected chunk on — the caller queues those for a retry (see
+    /// `MessageStore.enqueuePendingReads`) instead of silently dropping the mark.
+    /// - Returns: how many targets the server accepted, the ids it was never asked about,
+    ///   and how the run stopped (`.accepted` when it never did). `unsent` is queueable in
+    ///   every case — a rejected mark replays fine once a valid token is configured.
+    static func markReadTargetsOnServer(
+        serverURL: String,
+        topic: String,
+        targets: [(sequenceID: String?, messageID: String)],
+        authToken: String?,
+        session: URLSession = .shared
+    ) async -> (synced: Int, unsent: [String], stop: ReadMarkOutcome) {
+        var ids: [String] = []
+        var seen: Set<String> = []
+        for target in targets {
+            guard let id = serverTargetID(sequenceID: target.sequenceID, messageID: target.messageID),
+                  seen.insert(id).inserted else { continue }
+            ids.append(id)
+        }
+        guard !ids.isEmpty else { return (0, [], .accepted) }
+
+        var synced = 0
+        var index = 0
+        while index < ids.count {
+            let chunk = Array(ids[index..<min(index + Self.sequenceIDsPerRequest, ids.count)])
+            let outcome = await markReadChunkOnServer(
+                serverURL: serverURL, topic: topic, ids: chunk,
+                authToken: authToken, session: session
+            )
+            guard outcome == .accepted else {
+                Log.info("Server mark-all-read for \(topic) stopped after \(synced)/\(ids.count)")
+                return (synced, Array(ids.dropFirst(synced)), outcome)
+            }
+            synced += chunk.count
+            index += chunk.count
+        }
+        return (synced, [], .accepted)
+    }
+
+    /// Count-only view of `markReadTargetsOnServer` for callers with no retry queue.
+    /// - Returns: how many targets the server accepted (a lower bound).
     @discardableResult
     static func markAllReadOnServer(
         serverURL: String,
@@ -181,31 +234,29 @@ enum MessageActionService {
         authToken: String?,
         session: URLSession = .shared
     ) async -> Int {
-        var ids: [String] = []
-        var seen: Set<String> = []
-        for target in targets {
-            guard let id = serverTargetID(sequenceID: target.sequenceID, messageID: target.messageID),
-                  seen.insert(id).inserted else { continue }
-            ids.append(id)
-        }
-        guard !ids.isEmpty else { return 0 }
+        await markReadTargetsOnServer(
+            serverURL: serverURL, topic: topic, targets: targets,
+            authToken: authToken, session: session
+        ).synced
+    }
 
-        var synced = 0
-        var index = 0
-        while index < ids.count {
-            let chunk = Array(ids[index..<min(index + Self.sequenceIDsPerRequest, ids.count)])
-            let ok = await markReadChunkOnServer(
-                serverURL: serverURL, topic: topic, ids: chunk,
-                authToken: authToken, session: session
-            )
-            guard ok else {
-                Log.info("Server mark-all-read for \(topic) stopped after \(synced)/\(ids.count)")
-                return synced
-            }
-            synced += chunk.count
-            index += chunk.count
-        }
-        return synced
+    /// `GET {server}/{topic}/{id1,id2,…}/read` for ids already resolved to their server
+    /// shape — the outbox drain's entry point, since `pending_read` stores resolved ids.
+    /// The caller does the chunking; one non-accepted outcome ends that drain round.
+    /// - Returns: how the server answered.
+    @discardableResult
+    static func markReadIDsOnServer(
+        serverURL: String,
+        topic: String,
+        ids: [String],
+        authToken: String?,
+        session: URLSession = .shared
+    ) async -> ReadMarkOutcome {
+        guard !ids.isEmpty else { return .accepted }
+        return await markReadChunkOnServer(
+            serverURL: serverURL, topic: topic, ids: ids,
+            authToken: authToken, session: session
+        )
     }
 
     /// `GET {server}/{topic}/{id1,id2,…}/read` — a single id is the one-element case.
@@ -215,11 +266,11 @@ enum MessageActionService {
         ids: [String],
         authToken: String?,
         session: URLSession
-    ) async -> Bool {
+    ) async -> ReadMarkOutcome {
         let joined = ids.joined(separator: ",")
         guard let url = URL(string: "\(serverURL)/\(topic)/\(joined)/read") else {
             Log.error("Server mark-read: invalid URL for \(topic)/\(joined)")
-            return false
+            return .failed
         }
 
         var request = URLRequest(url: url)
@@ -233,20 +284,23 @@ enum MessageActionService {
             let (_, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
                 Log.error("Server mark-read failed for \(topic)/\(joined): no HTTP response")
-                return false
+                return .failed
             }
             switch httpResponse.statusCode {
             case 200...299, 404:
                 // 404: the topic is gone server-side, which is the state we wanted anyway.
                 Log.info("Server mark-read ok: \(topic)/\(joined) (\(ids.count) id(s), HTTP \(httpResponse.statusCode))")
-                return true
+                return .accepted
+            case 401, 403:
+                Log.error("Server mark-read rejected for \(topic)/\(joined): HTTP \(httpResponse.statusCode) (token missing/invalid or no write permission)")
+                return .rejected(status: httpResponse.statusCode)
             default:
                 Log.error("Server mark-read failed for \(topic)/\(joined): HTTP \(httpResponse.statusCode)")
-                return false
+                return .failed
             }
         } catch {
             Log.error("Server mark-read failed for \(topic)/\(joined): \(error.localizedDescription)")
-            return false
+            return .failed
         }
     }
 

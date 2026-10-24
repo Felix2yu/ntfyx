@@ -134,6 +134,21 @@ enum HistoryDatabase {
             try db.execute(sql: "INSERT INTO messages_fts(messages_fts) VALUES('rebuild')")
         }
 
+        // Outbox of read marks the server has not accepted yet (see MessageStore.enqueuePendingReads):
+        // marking read is local-first and the /read request is best-effort, so a mark made
+        // while offline has to survive until a reconnect can replay it.
+        migrator.registerMigration("v3") { db in
+            try db.execute(sql: """
+            CREATE TABLE IF NOT EXISTS pending_read (
+                server_url   TEXT    NOT NULL,
+                topic        TEXT    NOT NULL,
+                target_id    TEXT    NOT NULL,
+                enqueued_at  INTEGER NOT NULL,
+                PRIMARY KEY(server_url, topic, target_id)
+            )
+            """)
+        }
+
         return migrator
     }
 }

@@ -107,6 +107,11 @@ public final class Ntfyx {
     private var messageStore: MessageStore?
     private var badgeSync: UnreadBadgeSync?
     private var historySync: HistorySyncService?
+    /// Servers whose queued read marks are currently being replayed (outbox drain).
+    private var drainingPendingReads: Set<String> = []
+    /// Periodic outbox drain loop; the queue can also fill while the app was quit offline.
+    private var pendingReadDrainTask: Task<Void, Never>?
+    static let pendingReadDrainInterval: TimeInterval = 10 * 60
     /// Daily history trim; created together with the history store (audit F3).
     private var retentionScheduler: HistoryRetentionScheduler?
     /// The history scene keeps a single long-lived view model, created lazily the first
@@ -207,6 +212,7 @@ public final class Ntfyx {
             )
             self.retentionScheduler = scheduler
             scheduler.start()
+            startPendingReadDrainLoop()
         } catch {
             // History is an enhancement; the notification service must keep working without it.
             Log.error("Failed to open history database (history disabled): \(error)")
@@ -671,7 +677,13 @@ public final class Ntfyx {
         let serverURL = spec.serverURL
 
         Task {
-            _ = try? await store.applyActionEvent(event, serverURL: serverURL)
+            let affected = (try? await store.applyActionEvent(event, serverURL: serverURL)) ?? false
+            // An event that changed no row is the echo of a mark this device already
+            // applied (its own /read request came back around), or a target it never
+            // stored. Reloading the open list for each one collapsed the page the user
+            // was scrolled into — the echo of a scroll-read burst interrupted the very
+            // gesture that caused it — so only a real change goes out on the bus.
+            guard affected else { return }
             // The banner lives in Notification Center, not in the history database:
             // a remote read or delete has to withdraw it explicitly.
             if let messageID = try? await store.targetMessageID(for: event, serverURL: serverURL) {
@@ -685,11 +697,68 @@ public final class Ntfyx {
         Log.success("Connected to \(spec.serverURL)")
         connectedSpecs.insert(spec)
         refreshServerConnectivity(for: spec)
+        // A reconnect is the moment queued read marks become deliverable again.
+        Task { await self.drainPendingReads(serverURL: spec.serverURL) }
     }
 
     private func handleDisconnected(spec: ClientSpec) {
         Log.info("Disconnected from \(spec.serverURL)")
         connectedSpecs.remove(spec)
         refreshServerConnectivity(for: spec)
+    }
+
+    // MARK: - Pending read drain (outbox)
+
+    /// Replays the read marks a flaky connection left undelivered (see
+    /// `MessageStore.enqueuePendingReads`): a mark made while offline used to be lost
+    /// for good, leaving the other devices unread forever. Runs when a server
+    /// (re)connects and periodically; one rejection stops the round, the rest waits.
+    private func drainPendingReads(serverURL: String) async {
+        guard let store = messageStore else { return }
+        guard !drainingPendingReads.contains(serverURL) else { return }
+        drainingPendingReads.insert(serverURL)
+        defer { drainingPendingReads.remove(serverURL) }
+
+        guard let pending = try? await store.pendingReadIDs(serverURL: serverURL), !pending.isEmpty else { return }
+        let token = configStore.authToken(forServer: serverURL)
+        let total = pending.values.map(\.count).reduce(0, +)
+        Log.info("Replaying \(total) queued read mark(s) on \(serverURL)")
+        for (topic, ids) in pending.sorted(by: { $0.key < $1.key }) {
+            var index = 0
+            while index < ids.count {
+                let chunk = Array(ids[index..<min(index + MessageActionService.sequenceIDsPerRequest, ids.count)])
+                switch await MessageActionService.markReadIDsOnServer(
+                    serverURL: serverURL, topic: topic, ids: chunk, authToken: token
+                ) {
+                case .accepted:
+                    try? await store.removePendingReads(serverURL: serverURL, topic: topic, ids: chunk)
+                    index += chunk.count
+                case .rejected(let status):
+                    // Auth is on and this client has no usable write token. The queue stays:
+                    // configuring a valid token is what lets the next drain replay it.
+                    Log.error("Read-mark replay rejected by \(serverURL) with HTTP \(status) (token missing/invalid or no write permission); keeping the queue")
+                    return
+                case .failed:
+                    Log.info("Read-mark replay for \(topic) stopped after \(index)/\(ids.count); keeping the rest queued")
+                    return
+                }
+            }
+        }
+    }
+
+    /// Keeps the outbox draining even without reconnect events (e.g. the queue was
+    /// filled by a previous run, and this launch never dropped the connection).
+    private func startPendingReadDrainLoop() {
+        guard pendingReadDrainTask == nil else { return }
+        pendingReadDrainTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(Self.pendingReadDrainInterval * 1_000_000_000))
+                guard !Task.isCancelled, let self else { return }
+                let servers = self.configStore.config?.servers.map(\.url) ?? []
+                for serverURL in servers {
+                    await self.drainPendingReads(serverURL: serverURL)
+                }
+            }
+        }
     }
 }

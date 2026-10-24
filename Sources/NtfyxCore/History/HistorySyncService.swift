@@ -137,7 +137,11 @@ public final class HistorySyncService {
             // Advance sync state past the newest event, action events included. `since=<id>` is
             // exclusive, so a cursor that only counts messages leaves the clear/delete events
             // behind it to be replayed on every topic open — re-marking messages already read.
-            if let newest = result.newestEvent {
+            // A truncated replay is the exception: the server dropped its OLDER rows to fit
+            // the replay cap, and a cursor at the newest event would orphan them forever.
+            if result.truncated {
+                Log.error("History sync for \(ref.topic) was truncated by the server's replay cap; cursor kept so the dropped backlog is retried")
+            } else if let newest = result.newestEvent {
                 try await store.setSyncedInfo(
                     serverURL: ref.serverURL, topic: ref.topic,
                     id: newest.id, time: newest.time
