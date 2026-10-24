@@ -571,16 +571,6 @@
         }
       }
     },
-    "从服务器拉取该主题全部缓存消息（可能较慢，注意限速）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pulls every cached message for this topic from the server. It can be slow, and rate limits apply."
-          }
-        }
-      }
-    },
     "从服务器退役…": {
       "localizations": {
         "en": {
@@ -747,16 +737,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mark all read"
-          }
-        }
-      }
-    },
-    "全部标记已读（%d 条未读）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mark everything read (%d unread)"
           }
         }
       }
@@ -1051,6 +1031,16 @@
         }
       }
     },
+    "向下滚动加载更早消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scroll down to load earlier messages"
+          }
+        }
+      }
+    },
     "向该主题发布一条测试消息；已订阅的主题会随即弹出横幅（无需先保存）": {
       "localizations": {
         "en": {
@@ -1257,6 +1247,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Expand"
+          }
+        }
+      }
+    },
+    "已加载 %d 条": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d loaded"
           }
         }
       }
@@ -1541,6 +1541,16 @@
         }
       }
     },
+    "把所有服务器上全部主题的消息标为已读": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mark every topic on every server as read"
+          }
+        }
+      }
+    },
     "把该服务器所有主题的消息标为已读": {
       "localizations": {
         "en": {
@@ -1797,6 +1807,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "No messages"
+          }
+        }
+      }
+    },
+    "更多操作": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More actions"
           }
         }
       }
@@ -2251,16 +2271,6 @@
         }
       }
     },
-    "没有未读消息": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No unread messages"
-          }
-        }
-      }
-    },
     "没有查询到主题": {
       "localizations": {
         "en": {
@@ -2411,12 +2421,12 @@
         }
       }
     },
-    "清空": {
+    "清空…": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Clear"
+            "value": "Clear…"
           }
         }
       }
@@ -2457,16 +2467,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Clears this topic's cache on the server. Requires write access to the topic."
-          }
-        }
-      }
-    },
-    "清空该主题的历史消息": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Clear this topic's message history."
           }
         }
       }

@@ -47,15 +47,6 @@ public struct HistoryView: View {
                     .frame(width: 180)
                     .help(L("在所有主题的标题、正文与名称中搜索"))
             }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    viewModel.markEverythingRead()
-                } label: {
-                    Image(systemName: "checkmark.circle")
-                }
-                .help(viewModel.totalUnread > 0 ? LF("全部标记已读（%d 条未读）", viewModel.totalUnread) : L("没有未读消息"))
-                .disabled(viewModel.totalUnread == 0)
-            }
         }
         .onAppear {
             viewModel.refreshSidebar()
@@ -127,20 +118,29 @@ public struct HistoryView: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
-            HStack {
+            VStack(spacing: 8) {
                 if viewModel.totalUnread > 0 {
-                    Text(LF("%d 条未读", viewModel.totalUnread))
+                    HStack {
+                        Text(LF("%d 条未读", viewModel.totalUnread))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            viewModel.markEverythingRead()
+                        } label: {
+                            Label(L("全部已读"), systemImage: "checkmark.circle")
+                        }
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .help(L("把所有服务器上全部主题的消息标为已读"))
+                    }
                 }
-                Spacer()
                 Button {
                     isBrowserPresented = true
                     viewModel.loadServerTopics()
                 } label: {
                     Label(L("服务器主题"), systemImage: "antenna.radiowaves.left.and.right")
+                        .frame(maxWidth: .infinity)
                 }
-                .font(.footnote)
                 .help(L("查看服务器上有缓存的主题，点订阅即可加入"))
             }
             .padding(.horizontal, 12)
@@ -411,9 +411,18 @@ private struct TopicBrowserView: View {
             Text(L("服务器已无缓存"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Button(L("清除本地历史")) {
-                viewModel.clearLocalHistory(serverURL: serverURL, topic: topic)
+            if entry.hasLocalHistory {
+                Button(L("清除本地历史")) {
+                    viewModel.clearLocalHistory(serverURL: serverURL, topic: topic)
+                }
             }
+            Button {
+                viewModel.unsubscribe(serverURL: serverURL, topic: topic)
+            } label: {
+                Image(systemName: "bell.slash")
+            }
+            .buttonStyle(.borderless)
+            .help(L("取消订阅（本机会一并清掉该主题的历史）"))
         }
     }
 }

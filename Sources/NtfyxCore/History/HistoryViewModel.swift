@@ -104,6 +104,10 @@ public final class HistoryViewModel {
         let serverURL: String
         let topic: String
         var status: Status
+        /// Only consulted for `goneOnServer` rows: whether local rows are still there to
+        /// clean. Subscribed-but-uncached topics with no local history offer just the
+        /// unsubscribe button — a stale duplicate subscription, not a cleanup job.
+        var hasLocalHistory: Bool = true
 
         enum Status: Equatable {
             case available
@@ -673,7 +677,8 @@ public final class HistoryViewModel {
 
     /// Fetches `GET /v1/topics` for every configured server and merges the result with the
     /// current subscriptions. Topics the server has no cached messages for are listed as
-    /// `goneOnServer` — the server's list only covers what is still in its cache.
+    /// `goneOnServer` — the server's list only covers what is still in its cache — with the
+    /// local-history flag telling 清除本地历史 and 取消订阅 apart as the offered actions.
     func loadServerTopics() {
         guard let config = configStore.config, !config.servers.isEmpty else {
             serverTopics = [:]
@@ -692,9 +697,16 @@ public final class HistoryViewModel {
                 let token = self.configStore.authToken(forServer: server.url)
                 do {
                     let live = try await self.topicsFetcher(server.url, token)
-                    grouped[server.url] = Self.browserEntries(
+                    var entries = Self.browserEntries(
                         serverURL: server.url, live: live, subscribed: server.topics.map { $0.name }
                     )
+                    for index in entries.indices where entries[index].status == .goneOnServer {
+                        let rows = (try? await self.store.messages(
+                            serverURL: server.url, topic: entries[index].topic, limit: 1
+                        )) ?? []
+                        entries[index].hasLocalHistory = !rows.isEmpty
+                    }
+                    grouped[server.url] = entries
                 } catch {
                     problems.append("\(server.url)：\((error as? LocalizedError)?.errorDescription ?? "\(error)")")
                 }
@@ -744,7 +756,9 @@ public final class HistoryViewModel {
     }
 
     /// Drops a subscription. `pruneOrphanedHistory` removes the local history on the reload,
-    /// so the unread badge of a topic nobody subscribed to any more cannot linger.
+    /// so the unread badge of a topic nobody subscribed to any more cannot linger. Rows of
+    /// topics the server still caches flip to `.available`; uncached rows lose their last
+    /// action together with the subscription, so they leave the list entirely.
     func unsubscribe(serverURL: String, topic: String) {
         applyToConfig(serverURL: serverURL) { server in
             ServerConfig(
@@ -755,7 +769,14 @@ public final class HistoryViewModel {
                 fetchMissed: server.fetchMissed
             )
         }
-        updateRowStatus(serverURL: serverURL, topic: topic, to: .available)
+        if let entries = serverTopics[serverURL],
+           let index = entries.firstIndex(where: { $0.topic == topic }) {
+            if entries[index].status == .goneOnServer {
+                serverTopics[serverURL]?.removeAll { $0.topic == topic }
+            } else {
+                updateRowStatus(serverURL: serverURL, topic: topic, to: .available)
+            }
+        }
         refreshSidebar()
     }
 
@@ -780,7 +801,9 @@ public final class HistoryViewModel {
     }
 
     /// Drops every local row of a topic the server no longer holds. The subscription stays —
-    /// the topic may simply have run its messages down to expiry.
+    /// the topic may simply have run its messages down to expiry — so the browser row stays
+    /// too, only demoted: with the history gone its cleanup button is replaced by just the
+    /// unsubscribe control.
     func clearLocalHistory(serverURL: String, topic: String) {
         let ref = TopicRef(serverURL: serverURL, topic: topic)
         Task { [weak self] in
@@ -791,7 +814,15 @@ public final class HistoryViewModel {
             NotificationManager.shared.revoke(messageIDs: ids)
             try? await self.store.deleteTopic(serverURL: serverURL, topic: topic)
             self.postStoreChange(for: ref)
+            self.setBrowserRowLocalHistory(serverURL: serverURL, topic: topic, hasLocalHistory: false)
         }
+    }
+
+    private func setBrowserRowLocalHistory(serverURL: String, topic: String, hasLocalHistory: Bool) {
+        guard var entries = serverTopics[serverURL],
+              let index = entries.firstIndex(where: { $0.topic == topic }) else { return }
+        entries[index].hasLocalHistory = hasLocalHistory
+        serverTopics[serverURL] = entries
     }
 
     /// `DELETE /v1/topics/{topic}`: purges the server's cached messages and attachments, then

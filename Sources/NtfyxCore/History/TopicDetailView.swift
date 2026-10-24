@@ -82,20 +82,28 @@ struct TopicDetailView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 180)
 
-            Button {
-                viewModel.loadFullHistory()
-            } label: {
-                Label(L("加载全部历史"), systemImage: "arrow.down.circle")
-            }
-            .disabled(isSyncing)
-            .help(L("从服务器拉取该主题全部缓存消息（可能较慢，注意限速）"))
+            // 加载全部历史与清空都是低频重操作，收进溢出菜单给高频控件腾位置。
+            Menu {
+                Button {
+                    viewModel.loadFullHistory()
+                } label: {
+                    Label(L("加载全部历史"), systemImage: "arrow.down.circle")
+                }
+                .disabled(isSyncing)
 
-            Button(role: .destructive) {
-                viewModel.confirmClearTopic = topicRef
+                Divider()
+
+                Button(role: .destructive) {
+                    viewModel.confirmClearTopic = topicRef
+                } label: {
+                    Label(L("清空…"), systemImage: "trash")
+                }
             } label: {
-                Label(L("清空"), systemImage: "trash")
+                Image(systemName: "ellipsis.circle")
             }
-            .help(L("清空该主题的历史消息"))
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help(L("更多操作"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -241,8 +249,11 @@ struct TopicDetailView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 case .idle:
-                    if !viewModel.hasMoreMessages && !viewModel.messages.isEmpty {
-                        Text(L("已加载全部本地消息"))
+                    if !viewModel.messages.isEmpty {
+                        Text(LF("已加载 %d 条", viewModel.messages.count))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Text(viewModel.hasMoreMessages ? L("向下滚动加载更早消息") : L("已加载全部本地消息"))
                             .font(.footnote)
                             .foregroundStyle(.tertiary)
                     }

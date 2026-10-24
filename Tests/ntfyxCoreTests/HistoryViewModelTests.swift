@@ -368,6 +368,119 @@ final class HistoryViewModelTests: XCTestCase {
         try await waitUntil { vm.serverTopicsError?.contains("403") == true }
     }
 
+    /// Clearing the history of a subscribed-but-uncached topic demotes its row (cleanup
+    /// button gone, unsubscribe remains) — the subscription itself stays: the topic may
+    /// simply have run its messages down to expiry.
+    func testClearLocalHistoryDemotesTheRowAndKeepsTheSubscription() async throws {
+        let src = tempConfigPath()
+        defer { try? FileManager.default.removeItem(atPath: src) }
+        let yaml = """
+        servers:
+          - url: https://s.example
+            topics:
+              - name: webmonitor
+        """
+        try yaml.write(toFile: src, atomically: true, encoding: .utf8)
+        let configStore = ConfigStore()
+        try configStore.load(from: src)
+
+        let store = try MessageStore.inMemory()
+        try await store.upsert(
+            makeSearchableMessage(id: "wm1", topic: "webmonitor", message: "down", time: 1),
+            serverURL: "https://s.example"
+        )
+        let vm = HistoryViewModel(
+            store: store,
+            syncService: HistorySyncService(store: store, configStore: configStore),
+            configStore: configStore
+        )
+        vm.topicsFetcher = { _, _ in [] }  // server cache empty → webmonitor is goneOnServer
+
+        vm.loadServerTopics()
+        try await waitUntil {
+            (vm.serverTopics["https://s.example"] ?? []).map(\.topic) == ["webmonitor"]
+        }
+
+        vm.clearLocalHistory(serverURL: "https://s.example", topic: "webmonitor")
+        try await waitUntil {
+            vm.serverTopics["https://s.example"]?.first?.hasLocalHistory == false
+        }
+        XCTAssertEqual(vm.serverTopics["https://s.example"]?.map(\.topic), ["webmonitor"])
+        XCTAssertEqual(configStore.config?.servers.first?.topics.map(\.name), ["webmonitor"])
+    }
+
+    /// A subscribed-but-uncached topic with no local history (a stale duplicate subscription)
+    /// is still listed, but with the flag that reduces its actions to unsubscribe alone.
+    func testLoadServerTopicsFlagsGoneTopicsWithoutLocalHistory() async throws {
+        let src = tempConfigPath()
+        defer { try? FileManager.default.removeItem(atPath: src) }
+        let yaml = """
+        servers:
+          - url: https://s.example
+            topics:
+              - name: webmonitor
+        """
+        try yaml.write(toFile: src, atomically: true, encoding: .utf8)
+        let configStore = ConfigStore()
+        try configStore.load(from: src)
+
+        let store = try MessageStore.inMemory()  // no local rows
+        let vm = HistoryViewModel(
+            store: store,
+            syncService: HistorySyncService(store: store, configStore: configStore),
+            configStore: configStore
+        )
+        vm.topicsFetcher = { _, _ in [] }
+
+        vm.loadServerTopics()
+        try await waitUntil {
+            vm.serverTopics["https://s.example"]?.first?.hasLocalHistory == false
+        }
+        XCTAssertEqual(vm.serverTopics["https://s.example"]?.map(\.topic), ["webmonitor"])
+    }
+
+    /// Unsubscribing a topic the server no longer caches removes the row outright: with the
+    /// subscription gone there is neither server cache nor a cleanup left to show.
+    func testUnsubscribeRemovesGoneRowAndKeepsLiveRowAvailable() async throws {
+        let src = tempConfigPath()
+        defer { try? FileManager.default.removeItem(atPath: src) }
+        let yaml = """
+        servers:
+          - url: https://s.example
+            topics:
+              - name: stale-topic
+              - name: live-topic
+        """
+        try yaml.write(toFile: src, atomically: true, encoding: .utf8)
+        let configStore = ConfigStore()
+        try configStore.load(from: src)
+
+        let store = try MessageStore.inMemory()
+        let vm = HistoryViewModel(
+            store: store,
+            syncService: HistorySyncService(store: store, configStore: configStore),
+            configStore: configStore
+        )
+        vm.topicsFetcher = { _, _ in ["live-topic"] }
+
+        vm.loadServerTopics()
+        try await waitUntil { vm.serverTopics["https://s.example"]?.count == 2 }
+
+        vm.unsubscribe(serverURL: "https://s.example", topic: "stale-topic")
+        try await waitUntil {
+            vm.serverTopics["https://s.example"]?.map(\.topic) == ["live-topic"]
+        }
+        XCTAssertEqual(vm.serverTopics["https://s.example"]?.first?.status, .subscribed)
+        XCTAssertEqual(configStore.config?.servers.first?.topics.map(\.name), ["live-topic"])
+
+        vm.unsubscribe(serverURL: "https://s.example", topic: "live-topic")
+        try await waitUntil {
+            vm.serverTopics["https://s.example"]?.first?.status == .available
+                && vm.serverTopics["https://s.example"]?.first?.topic == "live-topic"
+        }
+        XCTAssertEqual(configStore.config?.servers.first?.topics.map(\.name), [])
+    }
+
     // MARK: - Global search (audit 3.4)
 
     private func makeSearchableMessage(id: String, topic: String, message text: String, time: Int) -> NtfyMessage {
