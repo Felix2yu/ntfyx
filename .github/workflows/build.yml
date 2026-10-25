@@ -48,10 +48,15 @@ jobs:
           path: .build/release/*.app
           if-no-files-found: error
 
+      # Release, not debug: in -Onone builds the async-stack codegen bug behind
+      # swiftlang/swift#92017 (default-argument/link-once async closures whose copies
+      # disagree on context size) aborts tests with "freed pointer was not the last
+      # allocation" — link-order dependent, so it passes on some machines and not others.
+      # Release optimizes the copies to a matching frame; the suite is the same.
       - name: Run tests
         run: |
           set -o pipefail
-          swift test 2>&1 | tee test-output.txt
+          swift test -c release 2>&1 | tee test-output.txt
 
       # A test-crash (signal 6) leaves a .ips crash report with the aborting stack;
       # collect it so the run can be debugged after the fact.
@@ -65,6 +70,24 @@ jobs:
           ls -la crash-reports || true
           echo "--- DiagnosticReports dir contents ---"
           ls -la "$HOME/Library/Logs/DiagnosticReports" 2>/dev/null || echo "missing"
+
+      # The runner's ReportCrash produces no .ips files, so re-run the crashing suite
+      # under lldb in batch mode and print the aborting backtrace into the step log.
+      - name: Backtrace under lldb
+        if: failure()
+        run: |
+          DEVELOPER_DIR="$(xcode-select -p)"
+          BUNDLE="$(find .build -name 'ntfyxCoreTests.xctest' | head -1)"
+          echo "bundle=$BUNDLE"
+          # Confirm the crash reproduces with the bundle run directly (no harness).
+          "$DEVELOPER_DIR/usr/bin/xctest" "$BUNDLE" -XCTest CloudChangeObserverTests 2>&1 | tail -5 || true
+          echo "=== lldb backtrace ==="
+          xcrun lldb --batch \
+            -o run \
+            -o "bt all" \
+            -o quit \
+            -- "$DEVELOPER_DIR/usr/bin/xctest" "$BUNDLE" -XCTest CloudChangeObserverTests 2>&1 \
+            | sed -n '/stop reason/,/^[0-9]* frame/p' | head -60
 
       - name: Upload crash reports
         if: failure()
