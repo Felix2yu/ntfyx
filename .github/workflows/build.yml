@@ -84,7 +84,7 @@ jobs:
             -o "thread backtrace" \
             -o "bt all" \
             -o quit \
-            -- "$DEVELOPER_DIR/usr/bin/xctest" "$BUNDLE" -XCTest CloudChangeObserverTests 2>&1 | tail -120
+            -- "$DEVELOPER_DIR/usr/bin/xctest" -XCTest CloudChangeObserverTests "$BUNDLE" 2>&1 | tail -120
 
       - name: Upload crash reports
         if: failure()
