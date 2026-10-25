@@ -79,15 +79,12 @@ jobs:
           DEVELOPER_DIR="$(xcode-select -p)"
           BUNDLE="$(find .build -name 'ntfyxCoreTests.xctest' | head -1)"
           echo "bundle=$BUNDLE"
-          # Confirm the crash reproduces with the bundle run directly (no harness).
-          "$DEVELOPER_DIR/usr/bin/xctest" "$BUNDLE" -XCTest CloudChangeObserverTests 2>&1 | tail -5 || true
-          echo "=== lldb backtrace ==="
           xcrun lldb --batch \
             -o run \
+            -o "thread backtrace" \
             -o "bt all" \
             -o quit \
-            -- "$DEVELOPER_DIR/usr/bin/xctest" "$BUNDLE" -XCTest CloudChangeObserverTests 2>&1 \
-            | sed -n '/stop reason/,/^[0-9]* frame/p' | head -60
+            -- "$DEVELOPER_DIR/usr/bin/xctest" "$BUNDLE" -XCTest CloudChangeObserverTests 2>&1 | tail -120
 
       - name: Upload crash reports
         if: failure()
