@@ -12,9 +12,11 @@ permissions:
 
 jobs:
   build:
-    # Package.swift declares swift-tools-version 6.2 and targets macOS 26, so the image's
-    # default toolchain must be Xcode 26 or newer; the older images ship Xcode 16.x.
-    runs-on: macos-26
+    # Pinned to the Xcode 27 image (macOS 27, Swift 6.4 — the reference toolchain the
+    # sources are developed against). The macOS 26 image's Swift 6.3 rejects 6.4 syntax
+    # (await in defer) and its task-stack allocator aborts debug tests with
+    # "freed pointer was not the last allocation"; Package.swift targets macOS 26+.
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
 
