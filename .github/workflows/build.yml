@@ -53,6 +53,16 @@ jobs:
           set -o pipefail
           swift test 2>&1 | tee test-output.txt
 
+      # A test-crash (signal 6) leaves a .ips crash report here; upload it so the
+      # aborting stack can be inspected after the run.
+      - name: Upload crash reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-reports
+          path: ~/Library/Logs/DiagnosticReports/*.ips
+          if-no-files-found: ignore
+
       - name: Test Summary
         if: always()
         run: |
