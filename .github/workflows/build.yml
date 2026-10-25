@@ -71,20 +71,21 @@ jobs:
           echo "--- DiagnosticReports dir contents ---"
           ls -la "$HOME/Library/Logs/DiagnosticReports" 2>/dev/null || echo "missing"
 
-      # The runner's ReportCrash produces no .ips files, so re-run the crashing suite
-      # under lldb in batch mode and print the aborting backtrace into the step log.
+      # The runner's ReportCrash produces no .ips files, so rebuild the Debug tests
+      # (full symbols) and re-run the crashing test under lldb in batch mode; -k
+      # commands fire when the process stops on the abort.
       - name: Backtrace under lldb
         if: failure()
         run: |
+          swift build --build-tests 2>&1 | tail -2
           DEVELOPER_DIR="$(xcode-select -p)"
-          BUNDLE="$(find .build -name 'ntfyxCoreTests.xctest' | head -1)"
+          BUNDLE=".build/out/Products/Debug/ntfyxCoreTests.xctest"
           echo "bundle=$BUNDLE"
           xcrun lldb --batch \
             -o run \
-            -o "thread backtrace" \
-            -o "bt all" \
-            -o quit \
-            -- "$DEVELOPER_DIR/usr/bin/xctest" -XCTest CloudChangeObserverTests "$BUNDLE" 2>&1 | tail -120
+            -k "bt all" \
+            -k "quit" \
+            -- "$DEVELOPER_DIR/usr/bin/xctest" -XCTest "CloudChangeObserverTests/testBurstCoalescesIntoOneDebouncedEvent" "$BUNDLE" 2>&1 | tail -200
 
       - name: Upload crash reports
         if: failure()
