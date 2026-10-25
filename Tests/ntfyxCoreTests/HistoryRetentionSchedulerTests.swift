@@ -105,7 +105,7 @@ final class HistoryRetentionSchedulerTests: XCTestCase {
         defer { harness.cleanup() }
         try await seedExpiredReadMessage(in: harness)
 
-        let wildcardChange = TrackableExpectation(description: "retention posts a wildcard bus change")
+        let wildcardChange = expectation(description: "retention posts a wildcard bus change")
         let busTask = Task {
             for await change in harness.bus.changes() {
                 if change.topicRef == nil {
@@ -118,7 +118,7 @@ final class HistoryRetentionSchedulerTests: XCTestCase {
         let scheduler = harness.makeScheduler()
         scheduler.start()
 
-        await waitForAll([wildcardChange], timeout: 3)
+        await fulfillment(of: [wildcardChange], timeout: 3)
         busTask.cancel()
         let remaining = try await alertsCount(harness)
         XCTAssertEqual(remaining, 0, "启动即跑应删掉过期已读消息")

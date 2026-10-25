@@ -46,52 +46,10 @@ jobs:
           path: .build/release/*.app
           if-no-files-found: error
 
-      # `taskpolicy -B` matters: the runner's shell context carries background-task
-      # policy, and at that priority the Swift runtime switches the async task
-      # allocator, making XCTest's async error-observation path abort the whole test
-      # process with "freed pointer was not the last allocation" (reproduced locally
-      # with `taskpolicy -b`; `-B` cancels it; see ExpectationWaiting.swift).
       - name: Run tests
         run: |
           set -o pipefail
-          taskpolicy -B swift test 2>&1 | tee test-output.txt
-
-      # A test-crash (signal 6) leaves a .ips crash report with the aborting stack;
-      # collect it so the run can be debugged after the fact.
-      - name: Collect crash reports
-        if: failure()
-        run: |
-          sleep 8
-          mkdir -p crash-reports
-          find "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports \
-            -name '*.ips' -mmin -15 -exec cp {} crash-reports/ \; 2>/dev/null || true
-          ls -la crash-reports || true
-          echo "--- DiagnosticReports dir contents ---"
-          ls -la "$HOME/Library/Logs/DiagnosticReports" 2>/dev/null || echo "missing"
-
-      # The runner's ReportCrash produces no .ips files, so rebuild the Debug tests
-      # (full symbols) and re-run the crashing test under lldb in batch mode; -k
-      # commands fire when the process stops on the abort.
-      - name: Backtrace under lldb
-        if: failure()
-        run: |
-          swift build --build-tests 2>&1 | tail -2
-          DEVELOPER_DIR="$(xcode-select -p)"
-          BUNDLE=".build/out/Products/Debug/ntfyxCoreTests.xctest"
-          echo "bundle=$BUNDLE"
-          xcrun lldb --batch \
-            -o run \
-            -k "bt all" \
-            -k "quit" \
-            -- taskpolicy -B "$DEVELOPER_DIR/usr/bin/xctest" -XCTest "CloudChangeObserverTests/testBurstCoalescesIntoOneDebouncedEvent" "$BUNDLE" 2>&1 | tail -200
-
-      - name: Upload crash reports
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: crash-reports
-          path: crash-reports
-          if-no-files-found: ignore
+          swift test 2>&1 | tee test-output.txt
 
       - name: Test Summary
         if: always()

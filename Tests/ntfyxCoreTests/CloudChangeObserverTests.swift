@@ -18,10 +18,10 @@ private final class Box<T>: @unchecked Sendable {
 final class CloudChangeObserverTests: XCTestCase {
     nonisolated(unsafe) private var collected: Task<Void, Never>?
     private var events: [CloudChange] = []
-    private var expectation: TrackableExpectation?
+    private var expectation: XCTestExpectation?
 
     private func collect(from observer: CloudChangeObserver, count: Int) {
-        let exp = TrackableExpectation(description: "received \(count) event(s)")
+        let exp = expectation(description: "received \(count) event(s)")
         if count <= 1 {
             exp.assertForOverFulfill = true
         }
@@ -32,7 +32,10 @@ final class CloudChangeObserverTests: XCTestCase {
                 guard let self else { return }
                 self.events.append(event)
                 received += 1
-                if received >= count { self.expectation?.fulfill() }
+                // Exactly once: fulfilling again when more events than `count` arrive
+                // is an XCTest API violation that aborts the async test process with
+                // "freed pointer was not the last allocation" (seen on throttled CI).
+                if received == count { self.expectation?.fulfill() }
             }
         }
     }
@@ -52,13 +55,16 @@ final class CloudChangeObserverTests: XCTestCase {
         observer.start()
         XCTAssertTrue(primary.started)
 
+        // Back-to-back fires, no sleeps: three enqueues on the observer's serial queue
+        // cancel-and-reschedule one pending debounce, so the single event is guaranteed
+        // regardless of how slowly the runner schedules the test task. Spacing the fires
+        // with sleeps raced a throttled CI runner: a debounce could fire between the
+        // fires, producing a second event (and, via over-fulfillment, a crash).
         primary.fire()
-        try await Task.sleep(nanoseconds: 40_000_000)
         primary.fire()
-        try await Task.sleep(nanoseconds: 40_000_000)
         primary.fire()
 
-        await waitForAll([expectation!], timeout: 2)
+        await fulfillment(of: [expectation!], timeout: 2)
         // Wait long enough that a non-coalesced second event would have arrived.
         try await Task.sleep(nanoseconds: 250_000_000)
         XCTAssertEqual(events.count, 1)
@@ -78,7 +84,7 @@ final class CloudChangeObserverTests: XCTestCase {
         observer.start()
         primary.fire()
 
-        await waitForAll([expectation!], timeout: 2)
+        await fulfillment(of: [expectation!], timeout: 2)
         XCTAssertEqual(events.first?.conflictURLs, [conflict])
         observer.stop()
     }
@@ -191,7 +197,7 @@ final class MetadataQueryCloudSourceTests: XCTestCase {
         let readinesses = Box<[CloudFileReadiness]>([.needsDownload, .ready])
         let downloadsStarted = Box(0)
         let fired = Box(0)
-        let eventExpectation = TrackableExpectation(description: "merge event after download completes")
+        let eventExpectation = expectation(description: "merge event after download completes")
 
         let source = MetadataQueryCloudSource(
             directoryURL: URL(fileURLWithPath: "/tmp"),
@@ -219,7 +225,7 @@ final class MetadataQueryCloudSourceTests: XCTestCase {
         XCTAssertEqual(fired.value, 0)
 
         center.post(name: Notification.Name.NSMetadataQueryDidUpdate, object: query)
-        await waitForAll([eventExpectation], timeout: 2)
+        await fulfillment(of: [eventExpectation], timeout: 2)
         XCTAssertEqual(fired.value, 1)
         source.stop()
         XCTAssertTrue(query.stopped)
@@ -293,7 +299,7 @@ final class DispatchSourceCloudSourceTests: XCTestCase {
 
     func testEventsFlowAndStopCancelsTheSourceAndClosesFD() async {
         let fake = FakeFileSystemSource()
-        let eventExpectation = TrackableExpectation(description: "directory event")
+        let eventExpectation = expectation(description: "directory event")
         let fdToClose = Box<CInt>(-99)
         let source = DispatchSourceCloudSource(
             directoryURL: URL(fileURLWithPath: "/tmp"),
@@ -303,7 +309,7 @@ final class DispatchSourceCloudSourceTests: XCTestCase {
         XCTAssertTrue(source.start(onEvent: { eventExpectation.fulfill() }))
         XCTAssertTrue(fake.resumed)
         fake.trigger()
-        await waitForAll([eventExpectation], timeout: 2)
+        await fulfillment(of: [eventExpectation], timeout: 2)
 
         source.stop()
         XCTAssertTrue(fake.cancelled)
@@ -331,13 +337,13 @@ final class DispatchSourceCloudSourceTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let eventExpectation = TrackableExpectation(description: "real directory event")
+        let eventExpectation = expectation(description: "real directory event")
         eventExpectation.assertForOverFulfill = false  // one atomic write fans out into several kqueue events
         let source = DispatchSourceCloudSource(directoryURL: directory)
         XCTAssertTrue(source.start(onEvent: { eventExpectation.fulfill() }))
         defer { source.stop() }
 
         try "x".write(to: directory.appendingPathComponent("ping.txt"), atomically: true, encoding: .utf8)
-        await waitForAll([eventExpectation], timeout: 3)
+        await fulfillment(of: [eventExpectation], timeout: 3)
     }
 }
