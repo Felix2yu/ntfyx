@@ -75,12 +75,18 @@ final class NtfyPollClientTests: XCTestCase {
         }
         // The session is built lazily from the configuration, so both ends of the swap need
         // to drop it: otherwise a mocked session leaks into the suites that poll for real.
+        // Spelled out on both paths — `await` inside `defer` is rejected by Swift 6.3,
+        // the CI toolchain.
         PollBodyProtocol.reset(lines: lines)
-        defer {
+        do {
+            try await body()
+        } catch {
             await NtfyPollClient.resetSession()
             PollBodyProtocol.reset(lines: [])
+            throw error
         }
-        try await body()
+        await NtfyPollClient.resetSession()
+        PollBodyProtocol.reset(lines: [])
     }
 
     func testEventsArriveInBatchesOfTheConfiguredSize() async throws {
