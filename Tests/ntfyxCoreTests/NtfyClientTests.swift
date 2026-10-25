@@ -270,8 +270,8 @@ final class NtfyClientTests: XCTestCase {
         let client = NtfyClient(serverURL: "http://exa mple.com", topics: ["test"])
         let collector = EventCollector()
 
-        let errorExp = expectation(description: "failure event")
-        let disconnectExp = expectation(description: "disconnected event")
+        let errorExp = TrackableExpectation(description: "failure event")
+        let disconnectExp = TrackableExpectation(description: "disconnected event")
         var received: NSError?
         collector.onFailure = { error in
             received = error
@@ -283,7 +283,7 @@ final class NtfyClientTests: XCTestCase {
         collector.start(for: client)
         await client.connect()
 
-        await fulfillment(of: [errorExp, disconnectExp], timeout: 2.0)
+        await waitForAll([errorExp, disconnectExp], timeout: 2.0)
         collector.stop()
 
         guard case NtfyClientError.invalidURL(let url)? = received as? NtfyClientError else {
@@ -392,7 +392,7 @@ final class NtfyClientTests: XCTestCase {
 
         // Connect, then immediately disconnect — only 1 request should ever be made
         // (no spurious reconnect from the cancelled task's error)
-        let initialExp = expectation(description: "Initial request received")
+        let initialExp = TrackableExpectation(description: "Initial request received")
         HoldingURLProtocol.onRequest = { count in
             if count >= 1 { initialExp.fulfill() }
         }
@@ -405,7 +405,7 @@ final class NtfyClientTests: XCTestCase {
         let collector = EventCollector()
         collector.start(for: client)
         await client.connect()
-        await fulfillment(of: [initialExp], timeout: 1.0)
+        await waitForAll([initialExp], timeout: 1.0)
 
         // Disconnect and wait — request count must stay at 1
         await client.disconnect()
@@ -423,13 +423,13 @@ final class NtfyClientTests: XCTestCase {
     func testRejectedResponseReconnects() async {
         RejectingURLProtocol.reset(statusCode: 502)
 
-        let retryExp = expectation(description: "Second request after the rejected response")
+        let retryExp = TrackableExpectation(description: "Second request after the rejected response")
         let retryGate = OneShotFulfillment()
         RejectingURLProtocol.onRequest = { count in
             if count >= 2 { retryGate.fulfill(retryExp) }
         }
 
-        let disconnectExp = expectation(description: "Refused server reported as disconnected")
+        let disconnectExp = TrackableExpectation(description: "Refused server reported as disconnected")
         let disconnectGate = OneShotFulfillment()
         let client = NtfyClient(
             serverURL: "https://ntfy.sh", topics: ["test"],
@@ -441,7 +441,7 @@ final class NtfyClientTests: XCTestCase {
         collector.start(for: client)
         await client.connect()
 
-        await fulfillment(of: [retryExp, disconnectExp], timeout: 5.0)
+        await waitForAll([retryExp, disconnectExp], timeout: 5.0)
         await client.disconnect()
         collector.stop()
 
@@ -473,8 +473,8 @@ final class NtfyClientTests: XCTestCase {
         let total = 2000
         ReplayURLProtocol.reset(lines: (0..<total).map { ndjson(id: "m\($0)", time: now - total + $0) })
 
-        let batchExp = expectation(description: "replay delivered in batches")
-        let closeExp = expectation(description: "replay finished")
+        let batchExp = TrackableExpectation(description: "replay delivered in batches")
+        let closeExp = TrackableExpectation(description: "replay finished")
         var batchSizes: [Int] = []
         var deliveredIndividual = 0
         let collector = EventCollector()
@@ -493,7 +493,7 @@ final class NtfyClientTests: XCTestCase {
         collector.start(for: client)
         await client.connect()
 
-        await fulfillment(of: [batchExp, closeExp], timeout: 10.0)
+        await waitForAll([batchExp, closeExp], timeout: 10.0)
         await client.disconnect()
         collector.stop()
 
@@ -519,7 +519,7 @@ final class NtfyClientTests: XCTestCase {
             ndjson(id: "live", time: now + 3600),
         ])
 
-        let liveExp = expectation(description: "live message delivered per message")
+        let liveExp = TrackableExpectation(description: "live message delivered per message")
         var batched: [String] = []
         var live: [String] = []
         let collector = EventCollector()
@@ -537,7 +537,7 @@ final class NtfyClientTests: XCTestCase {
         collector.start(for: client)
         await client.connect()
 
-        await fulfillment(of: [liveExp], timeout: 5.0)
+        await waitForAll([liveExp], timeout: 5.0)
         await client.disconnect()
         collector.stop()
 
@@ -556,7 +556,7 @@ final class NtfyClientTests: XCTestCase {
         ReplayURLProtocol.reset(lines: [])
 
         func connectOnce(_ topics: [String], expectingRequest count: Int) async {
-            let requested = expectation(description: "request #\(count)")
+            let requested = TrackableExpectation(description: "request #\(count)")
             ReplayURLProtocol.onRequest = { seen in
                 if seen >= count { requested.fulfill() }
             }
@@ -568,7 +568,7 @@ final class NtfyClientTests: XCTestCase {
             let collector = EventCollector()
             collector.start(for: client)
             await client.connect()
-            await fulfillment(of: [requested], timeout: 2.0)
+            await waitForAll([requested], timeout: 2.0)
             await client.disconnect()
             collector.stop()
             ReplayURLProtocol.onRequest = nil

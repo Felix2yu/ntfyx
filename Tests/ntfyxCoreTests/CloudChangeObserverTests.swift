@@ -18,10 +18,10 @@ private final class Box<T>: @unchecked Sendable {
 final class CloudChangeObserverTests: XCTestCase {
     nonisolated(unsafe) private var collected: Task<Void, Never>?
     private var events: [CloudChange] = []
-    private var expectation: XCTestExpectation?
+    private var expectation: TrackableExpectation?
 
     private func collect(from observer: CloudChangeObserver, count: Int) {
-        let exp = expectation(description: "received \(count) event(s)")
+        let exp = TrackableExpectation(description: "received \(count) event(s)")
         if count <= 1 {
             exp.assertForOverFulfill = true
         }
@@ -58,7 +58,7 @@ final class CloudChangeObserverTests: XCTestCase {
         try await Task.sleep(nanoseconds: 40_000_000)
         primary.fire()
 
-        await fulfillment(of: [expectation!], timeout: 2)
+        await waitForAll([expectation!], timeout: 2)
         // Wait long enough that a non-coalesced second event would have arrived.
         try await Task.sleep(nanoseconds: 250_000_000)
         XCTAssertEqual(events.count, 1)
@@ -78,7 +78,7 @@ final class CloudChangeObserverTests: XCTestCase {
         observer.start()
         primary.fire()
 
-        await fulfillment(of: [expectation!], timeout: 2)
+        await waitForAll([expectation!], timeout: 2)
         XCTAssertEqual(events.first?.conflictURLs, [conflict])
         observer.stop()
     }
@@ -191,7 +191,7 @@ final class MetadataQueryCloudSourceTests: XCTestCase {
         let readinesses = Box<[CloudFileReadiness]>([.needsDownload, .ready])
         let downloadsStarted = Box(0)
         let fired = Box(0)
-        let eventExpectation = expectation(description: "merge event after download completes")
+        let eventExpectation = TrackableExpectation(description: "merge event after download completes")
 
         let source = MetadataQueryCloudSource(
             directoryURL: URL(fileURLWithPath: "/tmp"),
@@ -219,7 +219,7 @@ final class MetadataQueryCloudSourceTests: XCTestCase {
         XCTAssertEqual(fired.value, 0)
 
         center.post(name: Notification.Name.NSMetadataQueryDidUpdate, object: query)
-        await fulfillment(of: [eventExpectation], timeout: 2)
+        await waitForAll([eventExpectation], timeout: 2)
         XCTAssertEqual(fired.value, 1)
         source.stop()
         XCTAssertTrue(query.stopped)
@@ -293,7 +293,7 @@ final class DispatchSourceCloudSourceTests: XCTestCase {
 
     func testEventsFlowAndStopCancelsTheSourceAndClosesFD() async {
         let fake = FakeFileSystemSource()
-        let eventExpectation = expectation(description: "directory event")
+        let eventExpectation = TrackableExpectation(description: "directory event")
         let fdToClose = Box<CInt>(-99)
         let source = DispatchSourceCloudSource(
             directoryURL: URL(fileURLWithPath: "/tmp"),
@@ -303,7 +303,7 @@ final class DispatchSourceCloudSourceTests: XCTestCase {
         XCTAssertTrue(source.start(onEvent: { eventExpectation.fulfill() }))
         XCTAssertTrue(fake.resumed)
         fake.trigger()
-        await fulfillment(of: [eventExpectation], timeout: 2)
+        await waitForAll([eventExpectation], timeout: 2)
 
         source.stop()
         XCTAssertTrue(fake.cancelled)
@@ -331,13 +331,13 @@ final class DispatchSourceCloudSourceTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let eventExpectation = expectation(description: "real directory event")
+        let eventExpectation = TrackableExpectation(description: "real directory event")
         eventExpectation.assertForOverFulfill = false  // one atomic write fans out into several kqueue events
         let source = DispatchSourceCloudSource(directoryURL: directory)
         XCTAssertTrue(source.start(onEvent: { eventExpectation.fulfill() }))
         defer { source.stop() }
 
         try "x".write(to: directory.appendingPathComponent("ping.txt"), atomically: true, encoding: .utf8)
-        await fulfillment(of: [eventExpectation], timeout: 3)
+        await waitForAll([eventExpectation], timeout: 3)
     }
 }
