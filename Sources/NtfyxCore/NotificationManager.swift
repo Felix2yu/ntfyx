@@ -648,20 +648,23 @@ public final class NotificationManager: NSObject {
     ///   - serverBaseURL: base URL of the server that delivered the message — the same topic
     ///     name can exist on several servers, so the allow-list must come from the right one
     private func openUrlSecurely(_ url: URL, serverBaseURL: String?) {
-        let serverConfig = serverBaseURL.flatMap { serverConfig(for: $0) }
+        // The local must not shadow the serverConfig(for:) method: referencing the shadowed
+        // name from the closure below crashes the Swift 6.3 type checker ("failed to produce
+        // diagnostic"), so the binding carries a distinct name.
+        let resolvedServerConfig = serverBaseURL.flatMap { serverConfig(for: $0) }
 
         // Validate scheme
-        let isSchemeAllowed = serverConfig?.isSchemeAllowed(url) ?? ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+        let isSchemeAllowed = resolvedServerConfig?.isSchemeAllowed(url) ?? ["http", "https"].contains(url.scheme?.lowercased() ?? "")
         guard isSchemeAllowed else {
-            let allowedSchemes = serverConfig?.effectiveAllowedSchemes ?? ["http", "https"]
+            let allowedSchemes = resolvedServerConfig?.effectiveAllowedSchemes ?? ["http", "https"]
             Log.info("Refusing to open URL with untrusted scheme: \(url.scheme ?? "nil") (\(url.absoluteString)). Allowed schemes: \(allowedSchemes)")
             return
         }
 
         // Validate domain
-        let isDomainAllowed = serverConfig?.isDomainAllowed(url) ?? true
+        let isDomainAllowed = resolvedServerConfig?.isDomainAllowed(url) ?? true
         guard isDomainAllowed else {
-            let allowedDomains = serverConfig?.allowedDomains ?? []
+            let allowedDomains = resolvedServerConfig?.allowedDomains ?? []
             Log.info("Refusing to open URL with untrusted domain: \(url.host ?? "nil") (\(url.absoluteString)). Allowed domains: \(allowedDomains)")
             return
         }
