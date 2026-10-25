@@ -12,10 +12,8 @@ permissions:
 
 jobs:
   build:
-    # Pinned to the Xcode 27 image (macOS 27, Swift 6.4 — the reference toolchain the
-    # sources are developed against). The macOS 26 image's Swift 6.3 rejects 6.4 syntax
-    # (await in defer) and its task-stack allocator aborts debug tests with
-    # "freed pointer was not the last allocation"; Package.swift targets macOS 26+.
+    # Xcode 27 image (macOS 27, Swift 6.4 — the toolchain the sources are developed
+    # against; 6.3 rejects some 6.4 syntax and has its own type-checker crash).
     runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
@@ -48,15 +46,15 @@ jobs:
           path: .build/release/*.app
           if-no-files-found: error
 
-      # Release, not debug: in -Onone builds the async-stack codegen bug behind
-      # swiftlang/swift#92017 (default-argument/link-once async closures whose copies
-      # disagree on context size) aborts tests with "freed pointer was not the last
-      # allocation" — link-order dependent, so it passes on some machines and not others.
-      # Release optimizes the copies to a matching frame; the suite is the same.
+      # `taskpolicy -B` matters: the runner's shell context carries background-task
+      # policy, and at that priority the Swift runtime switches the async task
+      # allocator, making XCTest's async error-observation path abort the whole test
+      # process with "freed pointer was not the last allocation" (reproduced locally
+      # with `taskpolicy -b`; `-B` cancels it; see ExpectationWaiting.swift).
       - name: Run tests
         run: |
           set -o pipefail
-          swift test -c release 2>&1 | tee test-output.txt
+          taskpolicy -B swift test 2>&1 | tee test-output.txt
 
       # A test-crash (signal 6) leaves a .ips crash report with the aborting stack;
       # collect it so the run can be debugged after the fact.
@@ -85,7 +83,7 @@ jobs:
             -o run \
             -k "bt all" \
             -k "quit" \
-            -- "$DEVELOPER_DIR/usr/bin/xctest" -XCTest "CloudChangeObserverTests/testBurstCoalescesIntoOneDebouncedEvent" "$BUNDLE" 2>&1 | tail -200
+            -- taskpolicy -B "$DEVELOPER_DIR/usr/bin/xctest" -XCTest "CloudChangeObserverTests/testBurstCoalescesIntoOneDebouncedEvent" "$BUNDLE" 2>&1 | tail -200
 
       - name: Upload crash reports
         if: failure()
