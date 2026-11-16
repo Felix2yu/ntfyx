@@ -1,11 +1,11 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.4
 import PackageDescription
 
 let package = Package(
     name: "ntfyx",
     defaultLocalization: "zh-Hans",
     platforms: [
-        .macOS(.v26)
+        .macOS(.v27)
     ],
     products: [
         .executable(
@@ -38,7 +38,11 @@ let package = Package(
         .executableTarget(
             name: "ntfyx",
             dependencies: ["NtfyxCore"],
-            path: "Sources/ntfyx"
+            path: "Sources/ntfyx",
+            swiftSettings: [
+                // Swift 6.2 默认 MainActor 隔离：app 入口与菜单栏 UI 都在主线程。
+                .defaultIsolation(MainActor.self)
+            ]
         ),
         .executableTarget(
             name: "ntfyxctl",

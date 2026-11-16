@@ -179,7 +179,7 @@ actor ConfigSyncCoordinator {
         do {
             // The blocking I/O (file coordination, placeholder downloads, Keychain) runs on
             // a detached utility task; the actor stays free for trigger/status calls.
-            let outcome = try await Task.detached(priority: .utility) {
+            let outcome = try await Task.detached(name: "ConfigSync.apply", priority: .utility) {
                 try ConfigSyncEngine.run(
                     local: local, base: base, resolution: resolution, store: store
                 )

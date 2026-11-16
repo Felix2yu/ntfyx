@@ -16,7 +16,7 @@ public final class NotificationManager: NSObject {
         return center
     }()
 
-    private var _scriptRunner: (any ScriptRunnerProtocol)?
+    private var _scriptRunner: any ScriptRunnerProtocol?
 
     /// Config lookups injected by the running coordinator (audit E3); the manager never
     /// reaches for a configuration singleton itself. Both run on the main actor.
@@ -99,7 +99,7 @@ public final class NotificationManager: NSObject {
         self._scriptRunner = runner
     }
 
-    private var scriptRunner: (any ScriptRunnerProtocol)? {
+    private var scriptRunner: any ScriptRunnerProtocol? {
         _scriptRunner
     }
 

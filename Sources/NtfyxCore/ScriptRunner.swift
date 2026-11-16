@@ -432,7 +432,7 @@ final class ScriptRunner: ScriptRunnerProtocol, Sendable {
         }
 
         let env = Subprocess.environment(extra: extraEnv)
-        Task.detached(priority: .utility) {
+        Task.detached(name: "ScriptRunner.script", priority: .utility) {
             let result = await Subprocess.run(
                 executable: command.executable,
                 arguments: command.arguments,
@@ -511,7 +511,7 @@ final class ScriptRunner: ScriptRunnerProtocol, Sendable {
         }
 
         Log.info("Running shortcut: \(shortcutName)")
-        Task.detached(priority: .utility) {
+        Task.detached(name: "ScriptRunner.shortcut", priority: .utility) {
             let result = await Subprocess.run(
                 executable: "/usr/bin/shortcuts",
                 arguments: args,
@@ -533,7 +533,7 @@ final class ScriptRunner: ScriptRunnerProtocol, Sendable {
 
     func runAppleScript(source: String) {
         Log.info("Running AppleScript (inline)")
-        Task.detached(priority: .utility) {
+        Task.detached(name: "ScriptRunner.appleScript", priority: .utility) {
             let result = await Subprocess.run(
                 executable: "/usr/bin/osascript",
                 arguments: ["-e", source],
@@ -545,7 +545,7 @@ final class ScriptRunner: ScriptRunnerProtocol, Sendable {
 
     func runAppleScriptFile(at path: String) {
         Log.info("Running AppleScript file: \(path)")
-        Task.detached(priority: .utility) {
+        Task.detached(name: "ScriptRunner.appleScriptFile", priority: .utility) {
             let result = await Subprocess.run(
                 executable: "/usr/bin/osascript",
                 arguments: [path],

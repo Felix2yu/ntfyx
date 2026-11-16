@@ -586,7 +586,7 @@ public final class Ntfyx {
             return (path, args, message)
         }
 
-        Task.detached(priority: .utility) { [weak self] in
+        Task.detached(name: "AppCore.applyBatch", priority: .utility) { [weak self] in
             let revoked = (try? await store.applyBatch(batch, serverURL: serverURL)) ?? []
             for (path, args, message) in scripts where runner.validateScript(at: path) {
                 self?.runAutoRunScript(for: message, scriptPath: path, arguments: args)

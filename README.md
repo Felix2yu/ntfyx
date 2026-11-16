@@ -2,8 +2,8 @@
 
 [![Build & Test](https://github.com/Felix2yu/ntfyx/actions/workflows/build.yml/badge.svg)](https://github.com/Felix2yu/ntfyx/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![macOS 26+](https://img.shields.io/badge/macOS-26%2B-brightgreen.svg)](https://www.apple.com/macos/)
-[![Swift 6](https://img.shields.io/badge/Swift-6-orange.svg)](https://swift.org/)
+[![macOS 27+](https://img.shields.io/badge/macOS-27%2B-brightgreen.svg)](https://www.apple.com/macos/)
+[![Swift 6.4](https://img.shields.io/badge/Swift-6.4-orange.svg)](https://swift.org/)
 [![Tests](https://img.shields.io/badge/Tests-342-brightgreen.svg)]()
 
 在 Mac 上接收来自任何来源的推送通知——服务器、IoT 设备、智能家居、CI 流水线或自定义脚本。无需注册账号，既可使用公共 [ntfy.sh](https://ntfy.sh) 服务，也支持自建服务器。
@@ -559,7 +559,7 @@ ntfy 支持在 `Tags` 字段中使用 [emoji 短代码](https://docs.ntfy.sh/emo
 
 ## 架构
 
-- **Swift 6**：现代 Swift，严格并发检查
+- **Swift 6.4**：现代 Swift，严格并发检查
 - **URLSession**：原生流式 JSON 支持
 - **UserNotifications**：富 macOS 通知
 - **Security 框架**：钥匙串集成
